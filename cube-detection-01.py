@@ -137,14 +137,17 @@ def merge_intersection_points(points, merge_radius=10):
 def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
     """
     Check if point (px, py) lies on line segment from (x1,y1) to (x2,y2).
-    Uses bounding box check with tolerance for integer rounding.
-    Note: collinearity is guaranteed by line_intersection calculation.
+    Uses bounding box check with tolerance for integer rounding,
+    PLUS a perpendicular-distance collinearity check to reject points
+    that are inside the bounding box but far from the actual line.
     """
     # Point must be within bounding box of segment (with tolerance for rounding)
-    if (min(x1, x2) - tol <= px <= max(x1, x2) + tol and
-        min(y1, y2) - tol <= py <= max(y1, y2) + tol):
-        return True
-    return False
+    if not (min(x1, x2) - tol <= px <= max(x1, x2) + tol and
+            min(y1, y2) - tol <= py <= max(y1, y2) + tol):
+        return False
+    # Collinearity check: perpendicular distance must be small
+    dist = point_to_line_distance(px, py, x1, y1, x2, y2)
+    return dist <= 5.0
 
 
 def segment_intersection(p1, p2, p3, p4):
@@ -276,6 +279,18 @@ def pipeline_detection(image, morphed_mask):
     # Merge nearby points (within merge_radius pixels)
     merged_points = merge_intersection_points(raw_points, merge_radius=10)
 
+    # For each extended line, find merged intersection points that lie on it
+    # and draw the segment between the first two such points in red.
+    for ext_line in extended_lines:
+        pt1, pt2 = ext_line
+        points_on_line = []
+        for mp in merged_points:
+            if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
+                points_on_line.append(mp)
+        if len(points_on_line) >= 2:
+            # Draw the segment between the first two intersection points in red
+            cv2.line(result, points_on_line[0], points_on_line[1], (0, 0, 255), 2)
+
     # Draw merged intersection points
     for x, y in merged_points:
         cv2.circle(result, (x, y), 4, (0, 0, 255), -1)
@@ -305,10 +320,6 @@ def find_contours(image, morphed_mask):
         # Cubes typically have 4-6 vertices in 2D projection
         if 4 <= len(approx) <= 8:
             cube_candidates.append(contour)
-            cv2.drawContours(result, [contour], -1, (255, 0, 0), 2)
-            # Draw bounding box
-            x, y, w, h = cv2.boundingRect(contour)
-            cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
     return result, len(cube_candidates)
 
