@@ -411,6 +411,9 @@ def pipeline_detection(image, morphed_mask, box=None):
     # Merge nearby points (within merge_radius pixels)
     merged_points = merge_intersection_points(raw_points, merge_radius=10)
 
+    # Track intermediate collinear points to exclude from drawing
+    excluded_points = set()
+
     # For each merged line, find merged intersection points on it
     # and draw the segment between the first two such points in red.
     for ext_line in merged_lines:
@@ -435,6 +438,11 @@ def pipeline_detection(image, morphed_mask, box=None):
                         if d > max_dist:
                             max_dist = d
                             p_a, p_b = points_on_line[pi], points_on_line[pj]
+            # If 3+ points on this line, collect intermediate points for exclusion
+            if len(points_on_line) >= 3:
+                for p in points_on_line:
+                    if p != p_a and p != p_b:
+                        excluded_points.add(p)
             # Only draw if both endpoints inside box (or no box)
             if box is None or (
                 cv2.pointPolygonTest(box, p_a, False) >= 0 and
@@ -444,6 +452,8 @@ def pipeline_detection(image, morphed_mask, box=None):
 
     # Draw merged intersection points
     for x, y in merged_points:
+        if (x, y) in excluded_points:
+            continue
         if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
             continue
         cv2.circle(result, (x, y), 4, (0, 0, 255), -1)
