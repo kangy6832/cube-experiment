@@ -226,6 +226,111 @@ def extend_line_2x(p1, p2):
     return ext1, ext2
 
 
+def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
+    """
+    Merge near-parallel extended lines into single lines.
+    Uses polar coordinate clustering: group by angle, then by distance.
+
+    Args:
+        extended_lines: list of ((x1,y1), (x2,y2)) tuples
+        angle_thresh: max angle difference in degrees to be considered parallel
+        dist_thresh: max perpendicular distance in pixels to be considered close
+
+    Returns:
+        List of merged ((x1,y1), (x2,y2)) tuples
+    """
+    if len(extended_lines) <= 1:
+        return list(extended_lines)
+
+    # --- Step 1: Convert to polar representation (theta, rho) ---
+    lines_polar = []
+    for idx, (p1, p2) in enumerate(extended_lines):
+        x1, y1 = p1
+        x2, y2 = p2
+        dx = x2 - x1
+        dy = y2 - y1
+        length = np.sqrt(dx * dx + dy * dy)
+        if length < 1e-10:
+            continue
+        # Direction angle in [0, pi) — lines are undirected
+        theta = np.arctan2(dy, dx) % np.pi
+        # Perpendicular distance from origin
+        rho = abs(x1 * y2 - x2 * y1) / length
+        lines_polar.append((theta, rho, idx, p1, p2))
+
+    if not lines_polar:
+        return []
+
+    # --- Step 2: Sort by angle and cluster ---
+    angle_thresh_rad = np.radians(angle_thresh)
+    lines_polar.sort(key=lambda x: x[0])
+
+    # Handle angle wrap-around: duplicate first entries shifted by +pi
+    # so that angles near 0 and near pi can be clustered together
+    extended = [(theta + np.pi, rho, idx, p1, p2)
+                for theta, rho, idx, p1, p2 in lines_polar]
+    all_angles = lines_polar + extended
+
+    # Cluster by angle
+    angle_clusters = []
+    current_cluster = [all_angles[0]]
+    for i in range(1, len(all_angles)):
+        if all_angles[i][0] - current_cluster[-1][0] < angle_thresh_rad:
+            current_cluster.append(all_angles[i])
+        else:
+            angle_clusters.append(current_cluster)
+            current_cluster = [all_angles[i]]
+    angle_clusters.append(current_cluster)
+
+    # --- Step 3: Within each angle cluster, sub-cluster by rho ---
+    merged_lines = []
+    for cluster in angle_clusters:
+        # Deduplicate by original index (from the wrap-around duplication)
+        seen = set()
+        unique_lines = []
+        for theta, rho, idx, p1, p2 in cluster:
+            if idx not in seen:
+                seen.add(idx)
+                unique_lines.append((theta, rho, idx, p1, p2))
+
+        if not unique_lines:
+            continue
+
+        # Sort by rho for secondary clustering
+        unique_lines.sort(key=lambda x: x[1])
+
+        rho_clusters = []
+        current_rho_cluster = [unique_lines[0]]
+        for i in range(1, len(unique_lines)):
+            if unique_lines[i][1] - current_rho_cluster[-1][1] < dist_thresh:
+                current_rho_cluster.append(unique_lines[i])
+            else:
+                rho_clusters.append(current_rho_cluster)
+                current_rho_cluster = [unique_lines[i]]
+        rho_clusters.append(current_rho_cluster)
+
+        # --- Step 4: Merge each rho cluster into one line ---
+        for rho_cluster in rho_clusters:
+            # Collect all endpoints
+            all_points = []
+            for theta, rho, idx, p1, p2 in rho_cluster:
+                all_points.append(p1)
+                all_points.append(p2)
+
+            # Use the cluster's median angle as the merge direction
+            median_theta = np.median([item[0] for item in rho_cluster])
+            direction = np.array([np.cos(median_theta), np.sin(median_theta)])
+
+            # Project all points onto the direction vector
+            projections = [p[0] * direction[0] + p[1] * direction[1] for p in all_points]
+            min_idx = int(np.argmin(projections))
+            max_idx = int(np.argmax(projections))
+
+            merged_lines.append((all_points[min_idx], all_points[max_idx]))
+
+    return merged_lines
+
+
 def pipeline_detection(image, morphed_mask):
     """
     Detect lines using Probabilistic Hough Line Transform.
