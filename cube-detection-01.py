@@ -32,7 +32,7 @@ HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
 LINE_EXTEND_FACTOR = 2.3     # Blue line extension multiplier
-RECT_EXTEND_PX = 100          # Yellow bounding rectangle outward extension (pixels)
+RECT_EXTEND_PX = 8          # Yellow bounding rectangle outward extension (pixels)
 
 # Line merging thresholds
 ANGLE_THRESHOLD = 3        # degrees
@@ -465,6 +465,40 @@ def find_contours(image, morphed_mask):
     return result, len(cube_candidates), cube_candidates
 
 
+def _compute_min_area_box(contours, extend_px=0):
+    """
+    Compute the minimum-area rotated bounding rectangle of the largest contour.
+
+    Args:
+        contours: list of contours from cv2.findContours
+        extend_px: pixels to extend the rectangle outward from each edge
+
+    Returns:
+        np.intp 4x2 array of box vertices, or None if no contours
+    """
+    if not contours:
+        return None
+
+    largest = max(contours, key=cv2.contourArea)
+    try:
+        rect = cv2.minAreaRect(largest)
+        (cx, cy), _, _ = rect
+        box = cv2.boxPoints(rect).astype(np.float64)
+
+        if extend_px > 0:
+            for i in range(4):
+                px, py = box[i]
+                dist = np.sqrt((px - cx) ** 2 + (py - cy) ** 2)
+                if dist > 1e-10:
+                    scale = 1 + extend_px / dist
+                    box[i] = (cx + scale * (px - cx), cy + scale * (py - cy))
+
+        return np.intp(box)
+    except Exception as e:
+        print(f"    Warning: minAreaRect failed for contour: {e}")
+        return None
+
+
 def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2, extend_px=0):
     """
     Draw the minimum-area rotated bounding rectangle around the largest contour.
@@ -652,3 +686,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # TEMP: sanity check _compute_min_area_box
+    import numpy as np
+    # Synthetic contour: a 100x50 rectangle at (200, 150)
+    pts = np.array([[[200,150]], [[300,150]], [[300,200]], [[200,200]]], dtype=np.int32)
+    box = _compute_min_area_box([pts], extend_px=0)
+    assert box is not None, "box should not be None"
+    assert box.shape == (4, 2), f"expected (4,2), got {box.shape}"
+    print("PASS: _compute_min_area_box basic case")
