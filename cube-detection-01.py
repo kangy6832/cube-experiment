@@ -341,11 +341,16 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
     return merged_lines
 
 
-def pipeline_detection(image, morphed_mask):
+def pipeline_detection(image, morphed_mask, box=None):
     """
     Detect lines using Probabilistic Hough Line Transform.
     Extend ALL detected Hough lines to image boundaries and mark
     their intersections with red dots.
+
+    Args:
+        image: BGR image
+        morphed_mask: binary mask after morphological processing
+        box: np.intp 4x2 array of polygon vertices, or None to draw all
 
     Returns: result image, raw_lines image, edges, line_count, raw_lines
     """
@@ -417,7 +422,7 @@ def pipeline_detection(image, morphed_mask):
         if len(points_on_line) >= 2:
             # Draw the segment between the two farthest-apart intersection points in red
             if len(points_on_line) == 2:
-                cv2.line(result, points_on_line[0], points_on_line[1], (0, 0, 255), 2)
+                p_a, p_b = points_on_line[0], points_on_line[1]
             else:
                 # Find the pair with maximum Euclidean distance
                 max_dist = -1
@@ -430,10 +435,17 @@ def pipeline_detection(image, morphed_mask):
                         if d > max_dist:
                             max_dist = d
                             p_a, p_b = points_on_line[pi], points_on_line[pj]
+            # Only draw if both endpoints inside box (or no box)
+            if box is None or (
+                cv2.pointPolygonTest(box, p_a, False) >= 0 and
+                cv2.pointPolygonTest(box, p_b, False) >= 0
+            ):
                 cv2.line(result, p_a, p_b, (0, 0, 255), 2)
 
     # Draw merged intersection points
     for x, y in merged_points:
+        if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
+            continue
         cv2.circle(result, (x, y), 4, (0, 0, 255), -1)
         cv2.circle(result, (x, y), 5, (0, 0, 255), 2)
 
