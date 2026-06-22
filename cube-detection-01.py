@@ -31,6 +31,7 @@ HOUGH_THETA = np.pi / 180
 HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
+LINE_EXTEND_FACTOR = 3     # Blue line extension multiplier
 
 # Line merging thresholds
 ANGLE_THRESHOLD = 10        # degrees
@@ -212,17 +213,17 @@ def point_to_line_distance(px, py, x1, y1, x2, y2):
     return abs(dy * px - dx * py + x2 * y1 - y2 * x1) / length
 
 
-def extend_line_2x(p1, p2):
+def extend_line_nx(p1, p2, factor):
     """
-    Extend a line segment to 2x its original length, centered at its midpoint.
+    Extend a line segment to `factor`x its original length, centered at midpoint.
     Returns the two new endpoints.
     """
     x1, y1 = p1
     x2, y2 = p2
-    # Extend each endpoint outward by 1x its distance from center
-    # New length = 2x original, centered at midpoint
-    ext1 = (int(round(2 * x1 - x2)), int(round(2 * y1 - y2)))
-    ext2 = (int(round(2 * x2 - x1)), int(round(2 * y2 - y1)))
+    ext1 = (int(round(factor * x1 - (factor - 1) * x2)),
+            int(round(factor * y1 - (factor - 1) * y2)))
+    ext2 = (int(round(factor * x2 - (factor - 1) * x1)),
+            int(round(factor * y2 - (factor - 1) * y1)))
     return ext1, ext2
 
 
@@ -378,7 +379,7 @@ def pipeline_detection(image, morphed_mask):
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            ext = extend_line_2x((x1, y1), (x2, y2))
+            ext = extend_line_nx((x1, y1), (x2, y2), LINE_EXTEND_FACTOR)
             extended_lines.append(ext)
 
     # Merge adjacent/near-parallel lines
