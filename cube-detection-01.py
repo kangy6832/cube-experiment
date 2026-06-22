@@ -463,6 +463,34 @@ def find_contours(image, morphed_mask):
     return result, len(cube_candidates)
 
 
+def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
+    """
+    Draw minimum-area rotated bounding rectangles around each contour.
+
+    Args:
+        image: BGR image (modified in-place)
+        contours: list of contours from cv2.findContours
+        color: BGR color tuple, default yellow (0, 255, 255)
+        thickness: line thickness in pixels
+
+    Returns:
+        The image with rectangles drawn (same reference as input)
+    """
+    if not contours:
+        return image
+
+    for contour in contours:
+        try:
+            rect = cv2.minAreaRect(contour)
+            box = cv2.boxPoints(rect)
+            box = np.int0(box)
+            cv2.drawContours(image, [box], 0, color, thickness)
+        except Exception as e:
+            print(f"    Warning: minAreaRect failed for contour: {e}")
+
+    return image
+
+
 def process_image(image_path, idx):
     """Process a single image through the full pipeline."""
     print(f"\n{'='*60}")
