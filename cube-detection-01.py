@@ -31,7 +31,7 @@ HOUGH_THETA = np.pi / 180
 HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
-LINE_EXTEND_FACTOR = 3     # Blue line extension multiplier
+LINE_EXTEND_FACTOR = 2.1     # Blue line extension multiplier
 
 # Line merging thresholds
 ANGLE_THRESHOLD = 10        # degrees
@@ -466,7 +466,7 @@ def find_contours(image, morphed_mask):
 
 def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
     """
-    Draw minimum-area rotated bounding rectangles around each contour.
+    Draw the minimum-area rotated bounding rectangle around the largest contour.
 
     Args:
         image: BGR image (modified in-place)
@@ -475,19 +475,19 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
         thickness: line thickness in pixels
 
     Returns:
-        The image with rectangles drawn (same reference as input)
+        The image with the largest rectangle drawn (same reference as input)
     """
     if not contours:
         return image
 
-    for contour in contours:
-        try:
-            rect = cv2.minAreaRect(contour)
-            box = cv2.boxPoints(rect)
-            box = np.intp(box)
-            cv2.drawContours(image, [box], 0, color, thickness)
-        except Exception as e:
-            print(f"    Warning: minAreaRect failed for contour: {e}")
+    largest = max(contours, key=cv2.contourArea)
+    try:
+        rect = cv2.minAreaRect(largest)
+        box = cv2.boxPoints(rect)
+        box = np.intp(box)
+        cv2.drawContours(image, [box], 0, color, thickness)
+    except Exception as e:
+        print(f"    Warning: minAreaRect failed for contour: {e}")
 
     return image
 
