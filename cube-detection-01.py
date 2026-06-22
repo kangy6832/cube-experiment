@@ -31,12 +31,12 @@ HOUGH_THETA = np.pi / 180
 HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
-LINE_EXTEND_FACTOR = 2.3     # Blue line extension multiplier
-RECT_EXTEND_PX = 8          # Yellow bounding rectangle outward extension (pixels)
+LINE_EXTEND_FACTOR = 2.0     # Blue line extension multiplier
+RECT_EXTEND_PX = 10          # Yellow bounding rectangle outward extension (pixels)
 
 # Line merging thresholds
-ANGLE_THRESHOLD = 3        # degrees
-DIST_THRESHOLD = 5         # pixels
+ANGLE_THRESHOLD = 4        # degrees
+DIST_THRESHOLD = 11         # pixels
 
 
 def create_output_dir():
