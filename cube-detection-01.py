@@ -413,8 +413,22 @@ def pipeline_detection(image, morphed_mask):
             if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
                 points_on_line.append(mp)
         if len(points_on_line) >= 2:
-            # Draw the segment between the first two intersection points in red
-            cv2.line(result, points_on_line[0], points_on_line[1], (0, 0, 255), 2)
+            # Draw the segment between the two farthest-apart intersection points in red
+            if len(points_on_line) == 2:
+                cv2.line(result, points_on_line[0], points_on_line[1], (0, 0, 255), 2)
+            else:
+                # Find the pair with maximum Euclidean distance
+                max_dist = -1
+                p_a, p_b = points_on_line[0], points_on_line[1]
+                for pi in range(len(points_on_line)):
+                    for pj in range(pi + 1, len(points_on_line)):
+                        dx = points_on_line[pi][0] - points_on_line[pj][0]
+                        dy = points_on_line[pi][1] - points_on_line[pj][1]
+                        d = dx * dx + dy * dy
+                        if d > max_dist:
+                            max_dist = d
+                            p_a, p_b = points_on_line[pi], points_on_line[pj]
+                cv2.line(result, p_a, p_b, (0, 0, 255), 2)
 
     # Draw merged intersection points
     for x, y in merged_points:
