@@ -483,7 +483,7 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
         try:
             rect = cv2.minAreaRect(contour)
             box = cv2.boxPoints(rect)
-            box = np.int0(box)
+            box = np.intp(box)
             cv2.drawContours(image, [box], 0, color, thickness)
         except Exception as e:
             print(f"    Warning: minAreaRect failed for contour: {e}")
@@ -531,6 +531,9 @@ def process_image(image_path, idx):
     # Step 4: Contour detection for cube candidates
     result_contours, candidate_count, contours_list = find_contours(image, morphed)
     print(f"  Cube candidates: {candidate_count}")
+
+    # Step 5: Draw yellow minimum-area bounding boxes on result_lines
+    draw_min_area_rects(result_lines, contours_list)
 
     # Save outputs
     base_name = os.path.splitext(os.path.basename(image_path))[0]
