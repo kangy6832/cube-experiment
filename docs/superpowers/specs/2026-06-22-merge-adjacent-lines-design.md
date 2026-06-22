@@ -43,7 +43,7 @@ Added in the Configuration section, alongside existing Hough parameters.
 
 3. **Secondary Clustering by Distance:**
    - Within each angle group, sort by `rho`
-   - Sub-group lines where adjacent rho difference < `dist_thresh`
+   - Group consecutive lines where the gap between adjacent rho values < `dist_thresh` (1D clustering on rho)
 
 4. **Merge Each Cluster:**
    - Collect all endpoints from lines in the cluster
