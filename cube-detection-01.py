@@ -271,15 +271,23 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
                 for theta, rho, idx, p1, p2 in lines_polar]
     all_angles = lines_polar + extended
 
-    # Cluster by angle
+    # Cluster by angle, but ensure each original index appears in at most
+    # one angle cluster (assign it to the first cluster it qualifies for).
     angle_clusters = []
     current_cluster = [all_angles[0]]
+    used_indices = {all_angles[0][2]}
     for i in range(1, len(all_angles)):
+        idx = all_angles[i][2]
+        if idx in used_indices:
+            # This original line is already assigned to a previous cluster
+            continue
         if all_angles[i][0] - current_cluster[-1][0] < angle_thresh_rad:
             current_cluster.append(all_angles[i])
+            used_indices.add(idx)
         else:
             angle_clusters.append(current_cluster)
             current_cluster = [all_angles[i]]
+            used_indices.add(idx)
     angle_clusters.append(current_cluster)
 
     # --- Step 3: Within each angle cluster, sub-cluster by rho ---
