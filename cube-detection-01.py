@@ -560,21 +560,22 @@ def process_image(image_path, idx):
     morphed_ratio = morphed_white / (w * h) * 100
     print(f"  Morphological - White pixels: {morphed_white} ({morphed_ratio:.1f}%)")
 
-    # Step 3: Pipeline (Hough Line) detection with border extension
-    # This produces the lines image with:
-    #   - All detected green lines (thin)
-    #   - Outer border lines extended to image borders (thick green)
-    #   - Intersection points marked with red dots
-    result_lines, raw_lines_img, edges, line_count, raw_lines, intersection_count, merged_count = pipeline_detection(image, morphed)
+    # Step 3: Contour detection for cube candidates
+    result_contours, candidate_count, contours_list = find_contours(image, morphed)
+    print(f"  Cube candidates: {candidate_count}")
+
+    # Step 4: Compute bounding box before drawing red points
+    box = _compute_min_area_box(contours_list, extend_px=RECT_EXTEND_PX)
+
+    # Step 5: Pipeline (Hough Line) detection — pass box to filter red points
+    result_lines, raw_lines_img, edges, line_count, raw_lines, \
+        intersection_count, merged_count = pipeline_detection(
+            image, morphed, box=box)
     print(f"  Hough Lines detected: {line_count}")
     print(f"  Lines after merging: {merged_count}")
     print(f"  Intersection points (merged): {intersection_count}")
 
-    # Step 4: Contour detection for cube candidates
-    result_contours, candidate_count, contours_list = find_contours(image, morphed)
-    print(f"  Cube candidates: {candidate_count}")
-
-    # Step 5: Draw yellow minimum-area bounding boxes on result_lines
+    # Step 6: Draw yellow minimum-area bounding boxes on result_lines
     draw_min_area_rects(result_lines, contours_list, extend_px=RECT_EXTEND_PX)
 
     # Save outputs
@@ -681,12 +682,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    # TEMP: sanity check _compute_min_area_box
-    import numpy as np
-    # Synthetic contour: a 100x50 rectangle at (200, 150)
-    pts = np.array([[[200,150]], [[300,150]], [[300,200]], [[200,200]]], dtype=np.int32)
-    box = _compute_min_area_box([pts], extend_px=0)
-    assert box is not None, "box should not be None"
-    assert box.shape == (4, 2), f"expected (4,2), got {box.shape}"
-    print("PASS: _compute_min_area_box basic case")
