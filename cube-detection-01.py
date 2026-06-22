@@ -460,7 +460,7 @@ def find_contours(image, morphed_mask):
         if 4 <= len(approx) <= 8:
             cube_candidates.append(contour)
 
-    return result, len(cube_candidates)
+    return result, len(cube_candidates), cube_candidates
 
 
 def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
@@ -529,7 +529,7 @@ def process_image(image_path, idx):
     print(f"  Intersection points (merged): {intersection_count}")
 
     # Step 4: Contour detection for cube candidates
-    result_contours, candidate_count = find_contours(image, morphed)
+    result_contours, candidate_count, contours_list = find_contours(image, morphed)
     print(f"  Cube candidates: {candidate_count}")
 
     # Save outputs
