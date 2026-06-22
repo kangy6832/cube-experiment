@@ -372,15 +372,23 @@ def pipeline_detection(image, morphed_mask):
             x1, y1, x2, y2 = line[0]
             ext = extend_line_2x((x1, y1), (x2, y2))
             extended_lines.append(ext)
-            cv2.line(result, ext[0], ext[1], (255, 0, 0), 1)  # Blue for extended lines
 
-    # Collect all intersection points
+    # Merge adjacent/near-parallel lines
+    merged_lines = merge_adjacent_lines(extended_lines, ANGLE_THRESHOLD, DIST_THRESHOLD)
+    print(f"    Lines after merging: {len(merged_lines)} (from {line_count})")
+
+    # Draw merged blue lines
+    for ext_line in merged_lines:
+        pt1, pt2 = ext_line
+        cv2.line(result, pt1, pt2, (255, 0, 0), 1)  # Blue for merged lines
+
+    # Collect all intersection points from merged lines
     raw_points = []
-    for i in range(len(extended_lines)):
-        for j in range(i + 1, len(extended_lines)):
+    for i in range(len(merged_lines)):
+        for j in range(i + 1, len(merged_lines)):
             pt = segment_intersection(
-                extended_lines[i][0], extended_lines[i][1],
-                extended_lines[j][0], extended_lines[j][1]
+                merged_lines[i][0], merged_lines[i][1],
+                merged_lines[j][0], merged_lines[j][1]
             )
             if pt is not None:
                 raw_points.append(pt)
@@ -388,9 +396,9 @@ def pipeline_detection(image, morphed_mask):
     # Merge nearby points (within merge_radius pixels)
     merged_points = merge_intersection_points(raw_points, merge_radius=10)
 
-    # For each extended line, find merged intersection points that lie on it
+    # For each merged line, find merged intersection points on it
     # and draw the segment between the first two such points in red.
-    for ext_line in extended_lines:
+    for ext_line in merged_lines:
         pt1, pt2 = ext_line
         points_on_line = []
         for mp in merged_points:
@@ -405,7 +413,7 @@ def pipeline_detection(image, morphed_mask):
         cv2.circle(result, (x, y), 4, (0, 0, 255), -1)
         cv2.circle(result, (x, y), 5, (0, 0, 255), 2)
 
-    return result, raw_lines_img, edges, line_count, lines, len(merged_points)
+    return result, raw_lines_img, edges, line_count, lines, len(merged_points), len(merged_lines)
 
 
 def find_contours(image, morphed_mask):
@@ -465,8 +473,9 @@ def process_image(image_path, idx):
     #   - All detected green lines (thin)
     #   - Outer border lines extended to image borders (thick green)
     #   - Intersection points marked with red dots
-    result_lines, raw_lines_img, edges, line_count, raw_lines, intersection_count = pipeline_detection(image, morphed)
+    result_lines, raw_lines_img, edges, line_count, raw_lines, intersection_count, merged_count = pipeline_detection(image, morphed)
     print(f"  Hough Lines detected: {line_count}")
+    print(f"  Lines after merging: {merged_count}")
     print(f"  Intersection points (merged): {intersection_count}")
 
     # Step 4: Contour detection for cube candidates
