@@ -31,11 +31,12 @@ HOUGH_THETA = np.pi / 180
 HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
-LINE_EXTEND_FACTOR = 2.1     # Blue line extension multiplier
+LINE_EXTEND_FACTOR = 2.3     # Blue line extension multiplier
+RECT_EXTEND_PX = 100          # Yellow bounding rectangle outward extension (pixels)
 
 # Line merging thresholds
-ANGLE_THRESHOLD = 10        # degrees
-DIST_THRESHOLD = 20         # pixels
+ANGLE_THRESHOLD = 3        # degrees
+DIST_THRESHOLD = 5         # pixels
 
 
 def create_output_dir():
@@ -464,7 +465,7 @@ def find_contours(image, morphed_mask):
     return result, len(cube_candidates), cube_candidates
 
 
-def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
+def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2, extend_px=0):
     """
     Draw the minimum-area rotated bounding rectangle around the largest contour.
 
@@ -473,6 +474,7 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
         contours: list of contours from cv2.findContours
         color: BGR color tuple, default yellow (0, 255, 255)
         thickness: line thickness in pixels
+        extend_px: pixels to extend the rectangle outward from each edge
 
     Returns:
         The image with the largest rectangle drawn (same reference as input)
@@ -483,7 +485,17 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2):
     largest = max(contours, key=cv2.contourArea)
     try:
         rect = cv2.minAreaRect(largest)
-        box = cv2.boxPoints(rect)
+        (cx, cy), _, _ = rect
+        box = cv2.boxPoints(rect).astype(np.float64)
+
+        if extend_px > 0:
+            for i in range(4):
+                px, py = box[i]
+                dist = np.sqrt((px - cx) ** 2 + (py - cy) ** 2)
+                if dist > 1e-10:
+                    scale = 1 + extend_px / dist
+                    box[i] = (cx + scale * (px - cx), cy + scale * (py - cy))
+
         box = np.intp(box)
         cv2.drawContours(image, [box], 0, color, thickness)
     except Exception as e:
@@ -534,7 +546,7 @@ def process_image(image_path, idx):
     print(f"  Cube candidates: {candidate_count}")
 
     # Step 5: Draw yellow minimum-area bounding boxes on result_lines
-    draw_min_area_rects(result_lines, contours_list)
+    draw_min_area_rects(result_lines, contours_list, extend_px=RECT_EXTEND_PX)
 
     # Save outputs
     base_name = os.path.splitext(os.path.basename(image_path))[0]
