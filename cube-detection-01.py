@@ -513,28 +513,11 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2, exten
     Returns:
         The image with the largest rectangle drawn (same reference as input)
     """
-    if not contours:
+    box = _compute_min_area_box(contours, extend_px)
+    if box is None:
         return image
 
-    largest = max(contours, key=cv2.contourArea)
-    try:
-        rect = cv2.minAreaRect(largest)
-        (cx, cy), _, _ = rect
-        box = cv2.boxPoints(rect).astype(np.float64)
-
-        if extend_px > 0:
-            for i in range(4):
-                px, py = box[i]
-                dist = np.sqrt((px - cx) ** 2 + (py - cy) ** 2)
-                if dist > 1e-10:
-                    scale = 1 + extend_px / dist
-                    box[i] = (cx + scale * (px - cx), cy + scale * (py - cy))
-
-        box = np.intp(box)
-        cv2.drawContours(image, [box], 0, color, thickness)
-    except Exception as e:
-        print(f"    Warning: minAreaRect failed for contour: {e}")
-
+    cv2.drawContours(image, [box], 0, color, thickness)
     return image
 
 
