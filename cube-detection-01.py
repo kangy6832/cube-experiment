@@ -32,6 +32,10 @@ HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
 
+# Line merging thresholds
+ANGLE_THRESHOLD = 10        # degrees
+DIST_THRESHOLD = 20         # pixels
+
 
 def create_output_dir():
     """Create output directory if it doesn't exist."""
