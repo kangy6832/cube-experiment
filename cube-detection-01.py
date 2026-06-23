@@ -465,6 +465,7 @@ def pipeline_detection(image, morphed_mask, box=None):
 
     # For each merged line, find merged intersection points on it
     # and draw the segment between the first two such points in red.
+    red_segments = []  # track drawn red segments for extension line logic
     for ext_line in merged_lines:
         pt1, pt2 = ext_line
         points_on_line = []
@@ -498,6 +499,7 @@ def pipeline_detection(image, morphed_mask, box=None):
                 cv2.pointPolygonTest(box, p_b, False) >= 0
             ):
                 cv2.line(result, p_a, p_b, (0, 0, 255), 2)
+                red_segments.append((p_a, p_b, ext_line))
 
     # Draw merged intersection points
     for x, y in merged_points:
