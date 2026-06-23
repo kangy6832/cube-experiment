@@ -272,7 +272,8 @@ def clip_ray_to_box(origin, direction, box):
     if best_pt is not None:
         return best_pt
 
-    # Fallback: no intersection found
+    # Fallback: should not be reached for a convex box with interior origin.
+    # If triggered (numerical edge case), the endpoint may lie outside the box.
     return (int(round(ox + dx * EXTEND_LENGTH)),
             int(round(oy + dy * EXTEND_LENGTH)))
 
@@ -544,6 +545,10 @@ def pipeline_detection(image, morphed_mask, box=None):
             # NOT the same object.
             red_seg = red_on[0]
             _, _, red_parent_line = red_seg
+
+            # Defensive: ensure the red segment's parent line is in blue_on
+            assert red_parent_line in blue_on, \
+                "red segment's parent line not found in blue_on"
 
             other_blue = None
             for bl in blue_on:
