@@ -815,5 +815,27 @@ def main():
     print(f"{'='*60}")
 
 
+def _self_check_clip_ray():
+    """Quick sanity check for clip_ray_to_box."""
+    # Square box: (10,10), (100,10), (100,100), (10,100)
+    box = np.array([[10, 10], [100, 10], [100, 100], [10, 100]], dtype=np.intp)
+
+    # Ray from center going right — should hit right edge
+    pt = clip_ray_to_box((50, 50), (1.0, 0.0), box)
+    assert pt[0] == 100 and pt[1] == 50, f"Expected (100, 50), got {pt}"
+
+    # Ray from center going up — should hit top edge
+    pt = clip_ray_to_box((50, 50), (0.0, -1.0), box)
+    assert pt[0] == 50 and pt[1] == 10, f"Expected (50, 10), got {pt}"
+
+    # Ray from center going down-right diagonal
+    diag = 1.0 / np.sqrt(2)
+    pt = clip_ray_to_box((50, 50), (diag, diag), box)
+    assert 99 <= pt[0] <= 101 and 99 <= pt[1] <= 101, f"Expected ~(100,100), got {pt}"
+
+    print("  [self_check] clip_ray_to_box: PASS")
+
+
 if __name__ == "__main__":
+    _self_check_clip_ray()
     main()
