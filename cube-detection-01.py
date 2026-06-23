@@ -33,6 +33,7 @@ HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
 LINE_EXTEND_FACTOR = 2.0     # Blue line extension multiplier
 RECT_EXTEND_PX = 10          # Yellow bounding rectangle outward extension (pixels)
+EXTEND_LENGTH = 50            # Red extension line length along blue line (pixels)
 
 # Line merging thresholds
 ANGLE_THRESHOLD = 4        # degrees
@@ -226,6 +227,54 @@ def extend_line_nx(p1, p2, factor):
     ext2 = (int(round(factor * x2 - (factor - 1) * x1)),
             int(round(factor * y2 - (factor - 1) * y1)))
     return ext1, ext2
+
+
+def clip_ray_to_box(origin, direction, box):
+    """
+    Clip a ray to the interior of a convex polygon (the yellow bounding box).
+
+    Args:
+        origin: (x, y) ray start point (already inside box)
+        direction: (dx, dy) unit direction vector
+        box: np.intp 4x2 array of polygon vertices
+
+    Returns:
+        (x, y) endpoint where the ray exits the box, or
+        origin + direction * EXTEND_LENGTH if no intersection found.
+    """
+    ox, oy = origin
+    dx, dy = direction
+
+    best_t = float('inf')
+    best_pt = None
+
+    for i in range(4):
+        # Edge from box[i] to box[(i+1)%4]
+        ex1, ey1 = int(box[i][0]), int(box[i][1])
+        ex2, ey2 = int(box[(i + 1) % 4][0]), int(box[(i + 1) % 4][1])
+
+        # Ray: P = origin + t * direction, t >= 0
+        # Edge: Q = edge_start + s * edge_dir, s in [0, 1]
+        edge_dx = ex2 - ex1
+        edge_dy = ey2 - ey1
+
+        denom = dx * edge_dy - dy * edge_dx
+        if abs(denom) < 1e-10:
+            continue  # parallel
+
+        t = ((ex1 - ox) * edge_dy - (ey1 - oy) * edge_dx) / denom
+        s = ((ex1 - ox) * dy - (ey1 - oy) * dx) / denom
+
+        if t > 1e-6 and 0 <= s <= 1 and t < best_t:
+            best_t = t
+            best_pt = (int(round(ox + t * dx)), int(round(oy + t * dy)))
+
+    if best_pt is not None:
+        return best_pt
+
+    # Fallback: no intersection found
+    return (int(round(ox + dx * EXTEND_LENGTH)),
+            int(round(oy + dy * EXTEND_LENGTH)))
 
 
 def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
