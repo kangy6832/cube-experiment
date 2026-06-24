@@ -463,6 +463,7 @@ def pipeline_detection(image, morphed_mask, box=None):
 
     # Track intermediate collinear points to exclude from drawing
     excluded_points = set()
+    red_endpoints = set()  # track farthest-pair endpoints for extension logic
 
     # For each merged line, find merged intersection points on it
     # and draw the segment between the first two such points in red.
@@ -501,6 +502,8 @@ def pipeline_detection(image, morphed_mask, box=None):
             ):
                 cv2.line(result, p_a, p_b, (0, 0, 255), 2)
                 red_segments.append((p_a, p_b, ext_line))
+                red_endpoints.add(p_a)
+                red_endpoints.add(p_b)
 
     # Draw merged intersection points
     for x, y in merged_points:
