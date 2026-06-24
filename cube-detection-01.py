@@ -545,17 +545,8 @@ def pipeline_detection(image, morphed_mask, box=None):
                     blue_on.append(ml)
 
             if is_endpoint:
-                # Extend along the blue line that is NOT the red segment's parent
-                red_seg = red_on[0]
-                _, _, red_parent_line = red_seg
-                other_blue = None
-                for bl in blue_on:
-                    if bl is not red_parent_line:
-                        other_blue = bl
-                        break
-                if other_blue is None:
-                    continue
-                blue_lines_to_extend = [other_blue]
+                # Skip endpoint extensions — only extend independent points
+                continue
             else:
                 # Independent point: extend along ALL blue lines through it
                 blue_lines_to_extend = blue_on
