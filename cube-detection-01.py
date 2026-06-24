@@ -44,13 +44,11 @@ DIST_THRESHOLD = 11         # pixels
 def _reset_drawing_globals():
     """Clear all drawing element globals. Call at start of each pipeline_detection."""
     global _raw_lines, _merged_lines, _red_segments, \
-        _intersection_points, _excluded_points, _red_endpoints, _extension_lines
+        _intersection_points, _extension_lines
     _raw_lines = []
     _merged_lines = []
     _red_segments = []
     _intersection_points = []
-    _excluded_points = set()
-    _red_endpoints = set()
     _extension_lines = []
 
 _reset_drawing_globals()
@@ -611,10 +609,8 @@ def draw_all_elements(image, box=None):
     for pt1, pt2 in _red_segments:
         cv2.line(image, pt1, pt2, (0, 0, 255), 2)
 
-    # Red dots: independent/excluded intersection points
+    # Red dots: intersection points
     for x, y in _intersection_points:
-        if (x, y) in _excluded_points:
-            continue
         if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
             continue
         cv2.circle(image, (x, y), 4, (0, 0, 255), -1)
