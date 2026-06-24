@@ -418,9 +418,9 @@ def pipeline_detection(image, morphed_mask, box=None):
         morphed_mask: binary mask after morphological processing
         box: np.intp 4x2 array of polygon vertices, or None to draw all
 
-    Returns: result image, raw_lines image, edges, line_count, raw_lines
+    Returns: edges, line_count, merged_count, intersection_count
     """
-    h, w = image.shape[:2]
+    _reset_drawing_globals()
 
     # Detect edges using Canny on the morphed mask
     edges = cv2.Canny(morphed_mask, 50, 150, apertureSize=3)
@@ -435,17 +435,13 @@ def pipeline_detection(image, morphed_mask, box=None):
         maxLineGap=HOUGH_MAX_LINE_GAP
     )
 
-    # Draw all original green lines on a copy of the original image
-    result = image.copy()
+    # Collect raw Hough lines into global
     line_count = 0
-
-    raw_lines_img = None
     if lines is not None:
         line_count = len(lines)
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            cv2.line(result, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        raw_lines_img = result.copy()
+            _raw_lines.append(((x1, y1), (x2, y2)))
 
     extended_lines = []
     if lines is not None:
@@ -458,10 +454,10 @@ def pipeline_detection(image, morphed_mask, box=None):
     merged_lines = merge_adjacent_lines(extended_lines, ANGLE_THRESHOLD, DIST_THRESHOLD)
     print(f"    Lines after merging: {len(merged_lines)} (from {line_count})")
 
-    # Draw merged blue lines
+    # Collect merged lines into global
     for ext_line in merged_lines:
         pt1, pt2 = ext_line
-        cv2.line(result, pt1, pt2, (255, 0, 0), 1)  # Blue for merged lines
+        _merged_lines.append((pt1, pt2))
 
     # Collect all intersection points from merged lines
     raw_points = []
@@ -482,8 +478,8 @@ def pipeline_detection(image, morphed_mask, box=None):
     red_endpoints = set()  # track farthest-pair endpoints for extension logic
 
     # For each merged line, find merged intersection points on it
-    # and draw the segment between the first two such points in red.
-    red_segments = []  # track drawn red segments for extension line logic
+    # and collect the segment between the first two such points in red.
+    red_segments = []  # track red segments for extension line logic
     for ext_line in merged_lines:
         pt1, pt2 = ext_line
         points_on_line = []
@@ -491,7 +487,7 @@ def pipeline_detection(image, morphed_mask, box=None):
             if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
                 points_on_line.append(mp)
         if len(points_on_line) >= 2:
-            # Draw the segment between the two farthest-apart intersection points in red
+            # Find the segment between the two farthest-apart intersection points
             if len(points_on_line) == 2:
                 p_a, p_b = points_on_line[0], points_on_line[1]
             else:
@@ -511,24 +507,23 @@ def pipeline_detection(image, morphed_mask, box=None):
                 for p in points_on_line:
                     if p != p_a and p != p_b:
                         excluded_points.add(p)
-            # Only draw if both endpoints inside box (or no box)
+            # Only store if both endpoints inside box (or no box)
             if box is None or (
                 cv2.pointPolygonTest(box, p_a, False) >= 0 and
                 cv2.pointPolygonTest(box, p_b, False) >= 0
             ):
-                cv2.line(result, p_a, p_b, (0, 0, 255), 2)
+                _red_segments.append((p_a, p_b))
                 red_segments.append((p_a, p_b, ext_line))
                 red_endpoints.add(p_a)
                 red_endpoints.add(p_b)
 
-    # Draw merged intersection points
+    # Collect merged intersection points into global
     for x, y in merged_points:
         if (x, y) in excluded_points:
             continue
         if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
             continue
-        cv2.circle(result, (x, y), 4, (0, 0, 255), -1)
-        cv2.circle(result, (x, y), 5, (0, 0, 255), 2)
+        _intersection_points.append((x, y))
 
     # --- Extension red lines along blue lines ---
     if box is not None and len(red_segments) > 0:
@@ -567,7 +562,7 @@ def pipeline_detection(image, morphed_mask, box=None):
                 # Independent point: extend along ALL blue lines through it
                 blue_lines_to_extend = blue_on
 
-            # Draw extension(s) along selected blue line(s)
+            # Extend along selected blue line(s)
             for bl in blue_lines_to_extend:
                 bx = bl[1][0] - bl[0][0]
                 by = bl[1][1] - bl[0][1]
@@ -595,9 +590,9 @@ def pipeline_detection(image, morphed_mask, box=None):
                     endpoint = (int(round(mp[0] + dir_x * EXTEND_LENGTH)),
                                 int(round(mp[1] + dir_y * EXTEND_LENGTH)))
 
-                cv2.line(result, mp, endpoint, (0, 0, 255), 2)
+                _extension_lines.append((mp, endpoint))
 
-    return result, raw_lines_img, edges, line_count, lines, len(merged_points), len(merged_lines)
+    return edges, line_count, len(merged_lines), len(merged_points)
 
 
 def draw_all_elements(image, box=None):
@@ -746,13 +741,16 @@ def process_image(image_path, idx):
     # Step 4: Compute bounding box before drawing red points
     box = _compute_min_area_box(contours_list, extend_px=RECT_EXTEND_PX)
 
-    # Step 5: Pipeline (Hough Line) detection — pass box to filter red points
-    result_lines, raw_lines_img, edges, line_count, raw_lines, \
-        intersection_count, merged_count = pipeline_detection(
-            image, morphed, box=box)
+    # Step 5: Pipeline (Hough Line) detection — populate globals
+    edges, line_count, merged_count, intersection_count = pipeline_detection(
+        image, morphed, box=box)
     print(f"  Hough Lines detected: {line_count}")
     print(f"  Lines after merging: {merged_count}")
     print(f"  Intersection points (merged): {intersection_count}")
+
+    # Step 5b: Draw all elements from globals onto a clean copy
+    result_lines = image.copy()
+    draw_all_elements(result_lines, box=box)
 
     # Step 6: Draw yellow minimum-area bounding boxes on result_lines
     draw_min_area_rects(result_lines, contours_list, extend_px=RECT_EXTEND_PX)
@@ -763,8 +761,6 @@ def process_image(image_path, idx):
     cv2.imwrite(os.path.join(OUTPUT_DIR, f"{base_name}_02_morphed.png"), morphed)
     cv2.imwrite(os.path.join(OUTPUT_DIR, f"{base_name}_03_edges.png"), edges)
     cv2.imwrite(os.path.join(LINES_DIR, f"{base_name}_04_lines.png"), result_lines)
-    if raw_lines_img is not None:
-        cv2.imwrite(os.path.join(LINES_RAW_DIR, f"{base_name}_04_lines_raw.png"), raw_lines_img)
     cv2.imwrite(os.path.join(OUTPUT_DIR, f"{base_name}_05_contours.png"), result_contours)
 
     # Create a composite visualization
