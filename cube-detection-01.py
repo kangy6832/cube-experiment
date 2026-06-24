@@ -15,7 +15,6 @@ import glob
 PHOTOS_DIR = "/home/kangy/MyProjects/cube-experiment/photos"
 OUTPUT_DIR = "/home/kangy/MyProjects/cube-experiment/output/01"
 LINES_DIR = "/home/kangy/MyProjects/cube-experiment/output/lines"
-LINES_RAW_DIR = "/home/kangy/MyProjects/cube-experiment/output/lines_raw"
 
 # LAB thresholds: L(0,255), A(146,255), B(115,255)
 LAB_LOWER = np.array([0, 146, 115])
@@ -60,7 +59,6 @@ def create_output_dir():
     """Create output directory if it doesn't exist."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(LINES_DIR, exist_ok=True)
-    os.makedirs(LINES_RAW_DIR, exist_ok=True)
 
 
 def lab_threshold(image):
