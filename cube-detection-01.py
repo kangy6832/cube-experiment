@@ -600,6 +600,37 @@ def pipeline_detection(image, morphed_mask, box=None):
     return result, raw_lines_img, edges, line_count, lines, len(merged_points), len(merged_lines)
 
 
+def draw_all_elements(image, box=None):
+    """
+    Draw all detected elements on the image from global storage.
+    Drawing order: green raw lines → blue merged lines → red segments → red dots → red extensions.
+    """
+    # Green: raw Hough lines
+    for pt1, pt2 in _raw_lines:
+        cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+
+    # Blue: merged extended lines
+    for pt1, pt2 in _merged_lines:
+        cv2.line(image, pt1, pt2, (255, 0, 0), 1)
+
+    # Red segments: between intersection points on merged lines
+    for pt1, pt2 in _red_segments:
+        cv2.line(image, pt1, pt2, (0, 0, 255), 2)
+
+    # Red dots: independent/excluded intersection points
+    for x, y in _intersection_points:
+        if (x, y) in _excluded_points:
+            continue
+        if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
+            continue
+        cv2.circle(image, (x, y), 4, (0, 0, 255), -1)
+        cv2.circle(image, (x, y), 5, (0, 0, 255), 2)
+
+    # Red extension lines
+    for pt1, pt2 in _extension_lines:
+        cv2.line(image, pt1, pt2, (0, 0, 255), 2)
+
+
 def find_contours(image, morphed_mask):
     """
     Find and draw contours that could be cube candidates.
