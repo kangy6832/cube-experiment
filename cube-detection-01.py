@@ -523,74 +523,72 @@ def pipeline_detection(image, morphed_mask, box=None):
             if cv2.pointPolygonTest(box, mp, False) < 0:
                 continue
 
-            # Count blue lines passing through this point
-            blue_on = []
-            for ml in merged_lines:
-                if point_on_segment(mp[0], mp[1], ml[0][0], ml[0][1],
-                                     ml[1][0], ml[1][1], tol=3):
-                    blue_on.append(ml)
-
-            # Count red segments passing through this point
+            # Classify point: endpoint, independent, or middle
+            is_endpoint = mp in red_endpoints
             red_on = []
             for seg in red_segments:
                 p_a, p_b, _ = seg
                 if point_on_segment(mp[0], mp[1], p_a[0], p_a[1],
                                      p_b[0], p_b[1], tol=3):
                     red_on.append(seg)
+            is_independent = len(red_on) == 0
 
-            # Condition: exactly 2 blue lines and exactly 1 red segment
-            if len(blue_on) != 2 or len(red_on) != 1:
+            # Skip middle points (on a red segment but not an endpoint)
+            if not is_endpoint and not is_independent:
                 continue
 
-            # Find the "other" blue line (not the one with the red segment)
-            # Compare by identity: red_seg's parent merged_line is the blue
-            # line it was drawn on; the other blue line is the one that is
-            # NOT the same object.
-            red_seg = red_on[0]
-            _, _, red_parent_line = red_seg
+            # Find blue lines passing through this point
+            blue_on = []
+            for ml in merged_lines:
+                if point_on_segment(mp[0], mp[1], ml[0][0], ml[0][1],
+                                     ml[1][0], ml[1][1], tol=3):
+                    blue_on.append(ml)
 
-            # Defensive: ensure the red segment's parent line is in blue_on
-            assert red_parent_line in blue_on, \
-                "red segment's parent line not found in blue_on"
+            if is_endpoint:
+                # Extend along the blue line that is NOT the red segment's parent
+                red_seg = red_on[0]
+                _, _, red_parent_line = red_seg
+                other_blue = None
+                for bl in blue_on:
+                    if bl is not red_parent_line:
+                        other_blue = bl
+                        break
+                if other_blue is None:
+                    continue
+                blue_lines_to_extend = [other_blue]
+            else:
+                # Independent point: extend along ALL blue lines through it
+                blue_lines_to_extend = blue_on
 
-            other_blue = None
-            for bl in blue_on:
-                if bl is not red_parent_line:
-                    other_blue = bl
-                    break
+            # Draw extension(s) along selected blue line(s)
+            for bl in blue_lines_to_extend:
+                bx = bl[1][0] - bl[0][0]
+                by = bl[1][1] - bl[0][1]
+                blen = np.sqrt(bx * bx + by * by)
+                if blen < 1e-10:
+                    continue
+                dir_x = bx / blen
+                dir_y = by / blen
 
-            if other_blue is None:
-                continue
+                # Pick direction with positive dot product toward centroid
+                to_cx = centroid[0] - mp[0]
+                to_cy = centroid[1] - mp[1]
+                if dir_x * to_cx + dir_y * to_cy < 0:
+                    dir_x = -dir_x
+                    dir_y = -dir_y
 
-            # Direction: which way along other_blue points toward centroid?
-            ob_p1, ob_p2 = other_blue
-            bx = ob_p2[0] - ob_p1[0]
-            by = ob_p2[1] - ob_p1[1]
-            blen = np.sqrt(bx * bx + by * by)
-            if blen < 1e-10:
-                continue
-            dir_x = bx / blen
-            dir_y = by / blen
+                # Clip ray to box boundary
+                endpoint = clip_ray_to_box(mp, (dir_x, dir_y), box)
 
-            # Pick direction with positive dot product toward centroid
-            to_cx = centroid[0] - mp[0]
-            to_cy = centroid[1] - mp[1]
-            if dir_x * to_cx + dir_y * to_cy < 0:
-                dir_x = -dir_x
-                dir_y = -dir_y
+                # Apply length cap
+                ex = endpoint[0] - mp[0]
+                ey = endpoint[1] - mp[1]
+                actual_len = np.sqrt(ex * ex + ey * ey)
+                if actual_len > EXTEND_LENGTH:
+                    endpoint = (int(round(mp[0] + dir_x * EXTEND_LENGTH)),
+                                int(round(mp[1] + dir_y * EXTEND_LENGTH)))
 
-            # Clip ray to box boundary
-            endpoint = clip_ray_to_box(mp, (dir_x, dir_y), box)
-
-            # Apply length cap
-            ex = endpoint[0] - mp[0]
-            ey = endpoint[1] - mp[1]
-            actual_len = np.sqrt(ex * ex + ey * ey)
-            if actual_len > EXTEND_LENGTH:
-                endpoint = (int(round(mp[0] + dir_x * EXTEND_LENGTH)),
-                            int(round(mp[1] + dir_y * EXTEND_LENGTH)))
-
-            cv2.line(result, mp, endpoint, (0, 0, 255), 2)
+                cv2.line(result, mp, endpoint, (0, 0, 255), 2)
 
     return result, raw_lines_img, edges, line_count, lines, len(merged_points), len(merged_lines)
 
