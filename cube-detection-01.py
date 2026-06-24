@@ -39,6 +39,22 @@ EXTEND_LENGTH = 50            # Red extension line length along blue line (pixel
 ANGLE_THRESHOLD = 4        # degrees
 DIST_THRESHOLD = 11         # pixels
 
+# ============ Drawing Element Storage ============
+# Populated by pipeline_detection, consumed by draw_all_elements.
+_reset_drawing_globals()
+
+def _reset_drawing_globals():
+    """Clear all drawing element globals. Call at start of each pipeline_detection."""
+    global _raw_lines, _merged_lines, _red_segments, \
+        _intersection_points, _excluded_points, _red_endpoints, _extension_lines
+    _raw_lines = []
+    _merged_lines = []
+    _red_segments = []
+    _intersection_points = []
+    _excluded_points = set()
+    _red_endpoints = set()
+    _extension_lines = []
+
 
 def create_output_dir():
     """Create output directory if it doesn't exist."""
