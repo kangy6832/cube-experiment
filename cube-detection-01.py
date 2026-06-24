@@ -40,7 +40,6 @@ DIST_THRESHOLD = 11         # pixels
 
 # ============ Drawing Element Storage ============
 # Populated by pipeline_detection, consumed by draw_all_elements.
-_reset_drawing_globals()
 
 def _reset_drawing_globals():
     """Clear all drawing element globals. Call at start of each pipeline_detection."""
@@ -53,6 +52,8 @@ def _reset_drawing_globals():
     _excluded_points = set()
     _red_endpoints = set()
     _extension_lines = []
+
+_reset_drawing_globals()
 
 
 def create_output_dir():
@@ -748,7 +749,7 @@ def process_image(image_path, idx):
 
     # Step 5b: Draw all elements from globals onto a clean copy
     result_lines = image.copy()
-    draw_all_elements(result_lines, box=box)
+    draw_all_elements(result_lines, box)
 
     # Step 6: Draw yellow minimum-area bounding boxes on result_lines
     draw_min_area_rects(result_lines, contours_list, extend_px=RECT_EXTEND_PX)
