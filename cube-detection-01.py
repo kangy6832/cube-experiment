@@ -102,11 +102,8 @@ def morphological_processing(mask):
     return dilated
 
 
-def line_intersection(p1, p2, p3, p4):
-    """
-    Find intersection point of line through (p1,p2) and line through (p3,p4).
-    Returns (x, y) or None if lines are parallel.
-    """
+def _line_intersection_pair(p1, p2, p3, p4):
+    """Find intersection of infinite lines through (p1,p2) and (p3,p4)."""
     x1, y1 = p1
     x2, y2 = p2
     x3, y3 = p3
@@ -120,6 +117,40 @@ def line_intersection(p1, p2, p3, p4):
     x = x1 + t * (x2 - x1)
     y = y1 + t * (y2 - y1)
     return (int(round(x)), int(round(y)))
+
+
+def _segment_intersection_pair(p1, p2, p3, p4):
+    """
+    Find intersection point of line SEGMENTS (p1-p2) and (p3-p4).
+    Returns (x, y) only if intersection lies on BOTH segments, else None.
+    """
+    pt = _line_intersection_pair(p1, p2, p3, p4)
+    if pt is None:
+        return None
+    x, y = pt
+    if point_on_segment(x, y, p1[0], p1[1], p2[0], p2[1]) and \
+       point_on_segment(x, y, p3[0], p3[1], p4[0], p4[1]):
+        return pt
+    return None
+
+
+def find_all_intersections():
+    """
+    Find all intersection points between merged line segments.
+    Reads: _merged_lines
+    Writes: _intersection_points
+    """
+    global _intersection_points
+    if len(_merged_lines) < 2:
+        return
+    for i in range(len(_merged_lines)):
+        for j in range(i + 1, len(_merged_lines)):
+            pt = _segment_intersection_pair(
+                _merged_lines[i][0], _merged_lines[i][1],
+                _merged_lines[j][0], _merged_lines[j][1]
+            )
+            if pt is not None:
+                _intersection_points.append(pt)
 
 
 def merge_points():
@@ -180,20 +211,6 @@ def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
     dist = point_to_line_distance(px, py, x1, y1, x2, y2)
     return dist <= 5.0
 
-
-def segment_intersection(p1, p2, p3, p4):
-    """
-    Find intersection point of line SEGMENTS (p1-p2) and (p3-p4).
-    Returns (x, y) only if intersection lies on BOTH segments, else None.
-    """
-    pt = line_intersection(p1, p2, p3, p4)
-    if pt is None:
-        return None
-    x, y = pt
-    if point_on_segment(x, y, p1[0], p1[1], p2[0], p2[1]) and \
-       point_on_segment(x, y, p3[0], p3[1], p4[0], p4[1]):
-        return pt
-    return None
 
 
 def extend_line(p1, p2, img_w, img_h):
@@ -449,19 +466,8 @@ def pipeline_detection(image, morphed_mask, box=None):
     merge_lines()
     print(f"    Lines after merging: {len(_merged_lines)} (from {line_count})")
 
-    # Collect all intersection points from merged lines
-    raw_points = []
-    for i in range(len(_merged_lines)):
-        for j in range(i + 1, len(_merged_lines)):
-            pt = segment_intersection(
-                _merged_lines[i][0], _merged_lines[i][1],
-                _merged_lines[j][0], _merged_lines[j][1]
-            )
-            if pt is not None:
-                raw_points.append(pt)
-
-    # Store raw intersection points, then merge (global I/O)
-    _intersection_points.extend(raw_points)
+    # Collect all intersection points from merged lines (global I/O)
+    find_all_intersections()
     merge_points()
 
     # Track intermediate collinear points to exclude from drawing
@@ -877,6 +883,20 @@ def _self_check_clip_ray():
     print("  [self_check] clip_ray_to_box: PASS")
 
 
+def _self_check_intersections():
+    """Quick sanity check: _merged_lines → find_all_intersections → _intersection_points."""
+    _reset_drawing_globals()
+    # Two perpendicular lines crossing at (50, 50)
+    _merged_lines.append(((10, 50), (90, 50)))  # horizontal
+    _merged_lines.append(((50, 10), (50, 90)))  # vertical
+    find_all_intersections()
+    assert len(_intersection_points) >= 1, f"Expected >= 1, got {len(_intersection_points)}"
+    pt = _intersection_points[0]
+    assert 48 <= pt[0] <= 52 and 48 <= pt[1] <= 52, f"Expected ~(50,50), got {pt}"
+    print("  [self_check] find_all_intersections: PASS")
+
+
 if __name__ == "__main__":
+    _self_check_intersections()
     _self_check_clip_ray()
     main()
