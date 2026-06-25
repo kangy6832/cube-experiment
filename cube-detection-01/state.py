@@ -1,3 +1,13 @@
+"""
+全局状态存储 — 流水线各阶段的中间结果。
+
+所有检测阶段通过读写此模块的模块级变量传递数据，
+避免在函数签名中传递大量参数。每次 pipeline_detection
+调用前由 _reset_drawing_globals() 清空，确保帧间隔离。
+
+变量命名前缀 _ 表示私有，仅供 pipeline 内部使用。
+"""
+
 # ============ Drawing Element Storage ============
 # Populated by stage functions, consumed by draw_all_elements.
 

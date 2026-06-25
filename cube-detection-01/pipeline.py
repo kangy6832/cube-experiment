@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Cube Detection Script
-- LAB color space thresholding: L(0,255), A(146,255), B(115,255)
-- Morphological processing on binarized image
-- Pipeline (Hough Line) detection for cube edges
+立方体检测流水线 — 主入口模块。
+
+组装各子模块，对 photos/ 目录中的每张图片执行完整检测流程:
+  LAB 阈值 → 形态学处理 → 轮廓检测 → 最小包围盒
+  → Canny 边缘 → Hough 直线 → 延长/合并 → 交点计算
+  → 红色线段分配 → 独立点延伸 → 结果保存
+
+运行: python3 cube-detection-01/pipeline.py
 """
 
 import cv2

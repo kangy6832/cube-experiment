@@ -1,3 +1,14 @@
+"""
+几何计算工具函数。
+
+提供:
+- _line_intersection_pair: 两条无限延长线的交点
+- _segment_intersection_pair: 两条线段的交点 (需同时落在两线段上)
+- point_on_segment: 判断点是否在线段上 (带容差)
+- point_to_line_distance: 点到直线的垂直距离
+- clip_ray_to_box: 将射线限制在凸多边形内部，返回与边界的交点
+"""
+
 import numpy as np
 
 from config import EXTEND_LENGTH

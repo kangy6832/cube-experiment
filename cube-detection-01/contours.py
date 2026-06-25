@@ -1,3 +1,12 @@
+"""
+轮廓检测与包围盒计算。
+
+提供:
+- find_contours: 在二值掩码上查找并筛选立方体候选轮廓 (面积≥500, 顶点数4–8)
+- _compute_min_area_box: 计算最大轮廓的最小面积旋转包围盒，可向外扩展
+- draw_min_area_rects: 在图像上绘制包围盒 (默认黄色)
+"""
+
 import cv2
 import numpy as np
 

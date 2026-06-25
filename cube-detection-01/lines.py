@@ -1,3 +1,16 @@
+"""
+线段处理: 延长、合并、交点计算、红色线段分配、独立点延伸。
+
+流水线第 5–9 步的核心逻辑，所有函数通过读写 state 全局变量传递数据:
+- extend_lines: 原始 Hough 线段按倍数从两端延长
+- merge_lines: 极坐标聚类合并相似线段 (角度→rho 距离)
+- find_all_intersections: 计算所有合并线段两两交点
+- merge_points: 10px 距离聚类合并交点
+- assign_red_segments: 在合并线上连接交点生成红色粗边
+- filter_intersection_points: 剔除冗余共线点和包围盒外点
+- extend_independent_points: 对独立交点沿蓝线向盒中心延伸
+"""
+
 import cv2
 import numpy as np
 
