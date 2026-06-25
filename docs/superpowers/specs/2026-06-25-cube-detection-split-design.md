@@ -79,7 +79,7 @@ geometry.py     ← config
 color.py        ← config, state
 contours.py     ← config, state
 lines.py        ← config, state, geometry
-pipeline.py     ← config, state, geometry, color, contours, lines
+pipeline.py     ← config, state, color, contours, lines
 ```
 
 ## Migration Rules
