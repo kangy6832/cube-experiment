@@ -141,6 +141,7 @@ def find_all_intersections():
     Writes: _intersection_points
     """
     global _intersection_points
+    _intersection_points = []
     if len(_merged_lines) < 2:
         return
     for i in range(len(_merged_lines)):
