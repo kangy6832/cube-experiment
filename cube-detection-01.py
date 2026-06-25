@@ -39,17 +39,26 @@ ANGLE_THRESHOLD = 4        # degrees
 DIST_THRESHOLD = 11         # pixels
 
 # ============ Drawing Element Storage ============
-# Populated by pipeline_detection, consumed by draw_all_elements.
+# Populated by stage functions, consumed by draw_all_elements.
 
 def _reset_drawing_globals():
     """Clear all drawing element globals. Call at start of each pipeline_detection."""
-    global _raw_lines, _merged_lines, _red_segments, \
-        _intersection_points, _extension_lines
+    global _raw_lines, _extended_lines, _merged_lines, \
+        _intersection_points, _merged_points, _red_segments, \
+        _extension_lines, _edges, _box, _image_size, \
+        _excluded_points, _red_endpoints
     _raw_lines = []
+    _extended_lines = []
     _merged_lines = []
-    _red_segments = []
     _intersection_points = []
+    _merged_points = []
+    _red_segments = []
     _extension_lines = []
+    _edges = None
+    _box = None
+    _image_size = (0, 0)
+    _excluded_points = set()
+    _red_endpoints = set()
 
 _reset_drawing_globals()
 
