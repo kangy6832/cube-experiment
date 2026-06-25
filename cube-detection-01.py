@@ -31,7 +31,7 @@ HOUGH_THRESHOLD = 50
 HOUGH_MIN_LINE_LENGTH = 30
 HOUGH_MAX_LINE_GAP = 10
 LINE_EXTEND_FACTOR = 2.0     # Blue line extension multiplier
-RECT_EXTEND_PX = 10          # Yellow bounding rectangle outward extension (pixels)
+RECT_EXTEND_PX = 15          # Yellow bounding rectangle outward extension (pixels)
 EXTEND_LENGTH = 50            # Red extension line length along blue line (pixels)
 
 # Line merging thresholds
@@ -42,38 +42,38 @@ DIST_THRESHOLD = 11         # pixels
 # Populated by stage functions, consumed by draw_all_elements.
 
 def _reset_drawing_globals():
-    """Clear all drawing element globals. Call at start of each pipeline_detection."""
+    """清除所有绘图元素的全局变量。每次调用 pipeline_detection 前执行，确保各帧数据互不干扰。"""
     global _raw_lines, _extended_lines, _merged_lines, \
         _intersection_points, _merged_points, _red_segments, \
         _extension_lines, _edges, _box, _image_size, \
         _excluded_points, _red_endpoints
-    _raw_lines = []
-    _extended_lines = []
-    _merged_lines = []
-    _intersection_points = []
-    _merged_points = []
-    _red_segments = []
-    _extension_lines = []
-    _edges = None
-    _box = None
-    _image_size = (0, 0)
-    _excluded_points = set()
-    _red_endpoints = set()
+    _raw_lines = []           # 原始 Hough 检测线段 [(p1, p2), ...]
+    _extended_lines = []      # 延长后的线段
+    _merged_lines = []        # 合并后的长线段（蓝色）
+    _intersection_points = []  # 原始交点 / 过滤后交点（红点）
+    _merged_points = []        # 聚类合并后的交点
+    _red_segments = []         # 红色线段（角点之间的粗红边）
+    _extension_lines = []      # 独立点延伸出的红色射线
+    _edges = None              # Canny 边缘图
+    _box = None                # 最小面积旋转包围盒（黄色矩形）
+    _image_size = (0, 0)       # 图像宽高
+    _excluded_points = set()   # 被排除的冗余共线交点
+    _red_endpoints = set()     # 红色线段的端点集合
 
 _reset_drawing_globals()
 
 
 def create_output_dir():
-    """Create output directory if it doesn't exist."""
+    """创建输出目录（如果不存在）。确保结果和线条图片有地方写入。"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(LINES_DIR, exist_ok=True)
 
 
 def lab_threshold(image):
     """
-    Apply LAB color space thresholding.
-    Keep pixels where L in [0,255], A in [146,255], B in [115,255].
-    This isolates reddish/yellowish regions typical of cubes.
+    对输入图像进行 LAB 色彩空间阈值分割。
+    保留 L 通道在 [0,255]、A 通道在 [146,255]、B 通道在 [115,255] 范围内的像素，
+    从而分离出立方体表面常见的红/黄色区域，生成二值掩码。
     """
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
     mask = cv2.inRange(lab, LAB_LOWER, LAB_UPPER)
@@ -82,10 +82,10 @@ def lab_threshold(image):
 
 def morphological_processing(mask):
     """
-    Apply morphological operations to clean up the binary image.
-    - Opening (erosion then dilation) to remove noise
-    - Closing (dilation then erosion) to fill gaps
-    - Dilation to enhance edges for line detection
+    对二值掩码进行形态学处理，去除噪声并填补空洞。
+    - 开运算（先腐蚀后膨胀）：消除小的噪声点
+    - 闭运算（先膨胀后腐蚀）：填补内部小孔洞
+    - 轻微膨胀：增强边缘，便于后续直线检测
     """
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (MORPH_KERNEL_SIZE, MORPH_KERNEL_SIZE))
 
@@ -103,7 +103,7 @@ def morphological_processing(mask):
 
 
 def _line_intersection_pair(p1, p2, p3, p4):
-    """Find intersection of infinite lines through (p1,p2) and (p3,p4)."""
+    """计算过 (p1,p2) 和 (p3,p4) 两条无限延长线的交点。若平行则返回 None。"""
     x1, y1 = p1
     x2, y2 = p2
     x3, y3 = p3
@@ -121,8 +121,8 @@ def _line_intersection_pair(p1, p2, p3, p4):
 
 def _segment_intersection_pair(p1, p2, p3, p4):
     """
-    Find intersection point of line SEGMENTS (p1-p2) and (p3-p4).
-    Returns (x, y) only if intersection lies on BOTH segments, else None.
+    计算线段 (p1-p2) 与 (p3-p4) 的交点。
+    仅当交点同时落在两条线段上时才返回 (x, y)，否则返回 None。
     """
     pt = _line_intersection_pair(p1, p2, p3, p4)
     if pt is None:
@@ -136,9 +136,9 @@ def _segment_intersection_pair(p1, p2, p3, p4):
 
 def find_all_intersections():
     """
-    Find all intersection points between merged line segments.
-    Reads: _merged_lines
-    Writes: _intersection_points
+    遍历所有合并后的线段，计算两两之间的交点。
+    输入: _merged_lines（合并后的线段列表）
+    输出: _intersection_points（所有交点坐标）
     """
     global _intersection_points
     _intersection_points = []
@@ -156,9 +156,9 @@ def find_all_intersections():
 
 def merge_points():
     """
-    Merge intersection points that are within 10px of each other.
-    Reads: _intersection_points
-    Writes: _merged_points
+    将相互距离在 10 像素以内的交点聚类并合并为其质心。
+    输入: _intersection_points（原始交点列表）
+    输出: _merged_points（合并后的交点列表）
     """
     global _merged_points
     if not _intersection_points:
@@ -199,10 +199,10 @@ def merge_points():
 
 def assign_red_segments():
     """
-    For each merged line, find merged intersection points on it
-    and store the segment between the two farthest-apart points.
-    Reads: _merged_lines, _merged_points, _box
-    Writes: _red_segments
+    在每条合并后的线段上找到位于其上的合并交点，
+    取距离最远的两个交点作为红色线段端点并存储。
+    输入: _merged_lines, _merged_points, _box
+    输出: _red_segments；同时产出 _excluded_points 和 _red_endpoints 供后续使用
     """
     global _red_segments
     if not _merged_lines or not _merged_points:
@@ -250,12 +250,11 @@ def assign_red_segments():
 
 def filter_intersection_points():
     """
-    Filter merged intersection points: remove excluded collinear points
-    and points outside the bounding box.
-    Reads: _merged_points, _excluded_points, _box
-    Writes: _intersection_points (rebuilt from _merged_points with filtering)
+    过滤合并后的交点：移除被标记为排除的共线点以及位于包围盒外的点。
+    输入: _merged_points, _excluded_points, _box
+    输出: _intersection_points（过滤后重建）
     """
-    global _intersection_points
+    global _intersection_points  # 使用全局的数组
     if not _merged_points:
         _intersection_points = []
         return
@@ -273,10 +272,10 @@ def filter_intersection_points():
 
 def extend_independent_points():
     """
-    For independent intersection points (not on any red segment),
-    extend along all blue lines through them toward the box center.
-    Reads: _merged_points, _merged_lines, _box
-    Writes: _extension_lines
+    对独立交点（不在任何红色线段上的点），沿经过它的所有蓝色线段
+    向包围盒中心方向延伸，生成红色延长线。
+    输入: _merged_points, _merged_lines, _box
+    输出: _extension_lines
     """
     global _extension_lines
     if _box is None or not _merged_points:
@@ -343,10 +342,9 @@ def extend_independent_points():
 
 def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
     """
-    Check if point (px, py) lies on line segment from (x1,y1) to (x2,y2).
-    Uses bounding box check with tolerance for integer rounding,
-    PLUS a perpendicular-distance collinearity check to reject points
-    that are inside the bounding box but far from the actual line.
+    判断点 (px, py) 是否位于线段 (x1,y1)-(x2,y2) 上。
+    使用带容差的边界框检查（应对整数舍入），
+    并叠加垂直距离共线检查，排除在边界框内但偏离实际直线的点。
     """
     # Point must be within bounding box of segment (with tolerance for rounding)
     if not (min(x1, x2) - tol <= px <= max(x1, x2) + tol and
@@ -360,7 +358,7 @@ def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
 
 
 def point_to_line_distance(px, py, x1, y1, x2, y2):
-    """Distance from point (px,py) to line through (x1,y1)-(x2,y2)."""
+    """计算点 (px, py) 到直线 (x1,y1)-(x2,y2) 的垂直距离。"""
     dx = x2 - x1
     dy = y2 - y1
     length = np.sqrt(dx * dx + dy * dy)
@@ -371,9 +369,9 @@ def point_to_line_distance(px, py, x1, y1, x2, y2):
 
 def extend_lines():
     """
-    Extend all raw Hough lines by LINE_EXTEND_FACTOR, centered at midpoint.
-    Reads: _raw_lines
-    Writes: _extended_lines
+    将每条原始 Hough 检测线段以中点为中心、按 LINE_EXTEND_FACTOR 倍率向两端延长。
+    输入: _raw_lines（原始 Hough 线段）
+    输出: _extended_lines（延长后的线段）
     """
     global _extended_lines
     if not _raw_lines:
@@ -390,16 +388,16 @@ def extend_lines():
 
 def clip_ray_to_box(origin, direction, box):
     """
-    Clip a ray to the interior of a convex polygon (the yellow bounding box).
+    将一条射线限制在凸多边形（黄色包围盒）内部。
+    从 origin 出发、沿 direction 方向的射线与多边形边界的交点即为终点。
 
-    Args:
-        origin: (x, y) ray start point (already inside box)
-        direction: (dx, dy) unit direction vector
-        box: np.intp 4x2 array of polygon vertices
+    参数:
+        origin: (x, y) 射线起点（已在多边形内）
+        direction: (dx, dy) 单位方向向量
+        box: np.intp 4x2 顶点数组
 
-    Returns:
-        (x, y) endpoint where the ray exits the box, or
-        origin + direction * EXTEND_LENGTH if no intersection found.
+    返回:
+        (x, y) 射线与多边形边界的交点；若未找到交点则回退为 origin + direction * EXTEND_LENGTH。
     """
     ox, oy = origin
     dx, dy = direction
@@ -439,9 +437,11 @@ def clip_ray_to_box(origin, direction, box):
 
 def merge_lines():
     """
-    Merge near-parallel extended lines into single lines.
-    Reads: _extended_lines
-    Writes: _merged_lines
+    将接近平行的延长线合并为单一长线段。
+    先按极坐标角度聚类，再在同类中按 rho 距离二次聚类，
+    最终将每簇内所有端点投影到中位方向并取极值点作为合并结果。
+    输入: _extended_lines
+    输出: _merged_lines
     """
     global _merged_lines
     if not _extended_lines:
@@ -536,18 +536,30 @@ def merge_lines():
             _merged_lines.append((all_points[min_idx], all_points[max_idx]))
 
 
+def _is_independent_blue(blue_line):
+    pt1, pt2 = blue_line
+    for rp1, rp2 in _red_segments:
+        if (point_on_segment(rp1[0], rp1[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3) and
+            point_on_segment(rp2[0], rp2[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3)):
+            return False
+    for ix, iy in _merged_points:
+        if point_on_segment(ix, iy, pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
+            return False
+    return True
+
+
 def pipeline_detection(image, morphed_mask, box=None):
     """
-    Detect lines using Probabilistic Hough Line Transform.
-    Extend ALL detected Hough lines to image boundaries and mark
-    their intersections with red dots.
+    完整直线检测流水线：Canny 边缘检测 → 概率 Hough 变换 → 线段延长 →
+    线段合并 → 交点计算与合并 → 红色线段分配 → 独立点延伸。
+    所有中间结果存入全局变量供 draw_all_elements 使用。
 
-    Args:
-        image: BGR image
-        morphed_mask: binary mask after morphological processing
-        box: np.intp 4x2 array of polygon vertices, or None to draw all
+    参数:
+        image: BGR 原始图像
+        morphed_mask: 形态学处理后的二值掩码
+        box: np.intp 4x2 多边形顶点数组，或 None 表示不限制绘制范围
 
-    Returns: edges, line_count, merged_count, intersection_count
+    返回: edges, line_count, merged_count, intersection_count
     """
     _reset_drawing_globals()
 
@@ -589,6 +601,11 @@ def pipeline_detection(image, morphed_mask, box=None):
     # Stage 6b: Filter intersection points (remove excluded + out-of-box)
     filter_intersection_points()
 
+    raw_count = len(_merged_lines)
+    _merged_lines[:] = [bl for bl in _merged_lines if not _is_independent_blue(bl)]
+    if len(_merged_lines) < raw_count:
+        print(f"    Removed {raw_count - len(_merged_lines)} independent blue lines")
+
     # Stage 7: Extend independent points
     extend_independent_points()
 
@@ -597,8 +614,8 @@ def pipeline_detection(image, morphed_mask, box=None):
 
 def draw_all_elements(image, box=None):
     """
-    Draw all detected elements on the image from global storage.
-    Drawing order: green raw lines → blue merged lines → red segments → red dots → red extensions.
+    将检测到的所有元素绘制到图像上（从全局变量读取）。
+    绘制顺序: 绿色原始线 → 蓝色合并线 → 红色线段 → 红色交点 → 红色延长线。
     """
     # Green: raw Hough lines
     for pt1, pt2 in _raw_lines:
@@ -626,8 +643,9 @@ def draw_all_elements(image, box=None):
 
 def find_contours(image, morphed_mask):
     """
-    Find and draw contours that could be cube candidates.
-    Filters by area and aspect ratio.
+    在二值掩码上查找轮廓，筛选出可能是立方体的候选区域。
+    过滤条件：面积 ≥ 500，多边形逼近后顶点数在 4–8 之间（立方体 2D 投影的典型范围）。
+    返回: 绘制了轮廓的图像、候选数量、轮廓列表
     """
     result = image.copy()
     contours, _ = cv2.findContours(morphed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -651,14 +669,14 @@ def find_contours(image, morphed_mask):
 
 def _compute_min_area_box(contours, extend_px=0):
     """
-    Compute the minimum-area rotated bounding rectangle of the largest contour.
+    计算最大轮廓的最小面积旋转包围矩形。
 
-    Args:
-        contours: list of contours from cv2.findContours
-        extend_px: pixels to extend the rectangle outward from each edge
+    参数:
+        contours: cv2.findContours 返回的轮廓列表
+        extend_px: 每条边向外扩展的像素数
 
-    Returns:
-        np.intp 4x2 array of box vertices, or None if no contours
+    返回:
+        np.intp 4x2 顶点数组；若无轮廓则返回 None
     """
     if not contours:
         return None
@@ -685,17 +703,17 @@ def _compute_min_area_box(contours, extend_px=0):
 
 def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2, extend_px=0):
     """
-    Draw the minimum-area rotated bounding rectangle around the largest contour.
+    在图像上绘制最大轮廓的最小面积旋转包围矩形。
 
-    Args:
-        image: BGR image (modified in-place)
-        contours: list of contours from cv2.findContours
-        color: BGR color tuple, default yellow (0, 255, 255)
-        thickness: line thickness in pixels
-        extend_px: pixels to extend the rectangle outward from each edge
+    参数:
+        image: BGR 图像（原地修改）
+        contours: cv2.findContours 返回的轮廓列表
+        color: BGR 颜色元组，默认黄色 (0, 255, 255)
+        thickness: 线宽（像素）
+        extend_px: 每条边向外扩展的像素数
 
-    Returns:
-        The image with the largest rectangle drawn (same reference as input)
+    返回:
+        绘制了矩形的图像（与输入同一引用）
     """
     box = _compute_min_area_box(contours, extend_px)
     if box is None:
@@ -706,7 +724,7 @@ def draw_min_area_rects(image, contours, color=(0, 255, 255), thickness=2, exten
 
 
 def process_image(image_path, idx):
-    """Process a single image through the full pipeline."""
+    """对单张图像执行完整流水线：阈值分割 → 形态学处理 → 轮廓检测 → 直线检测 → 结果保存。"""
     print(f"\n{'='*60}")
     print(f"Processing: {os.path.basename(image_path)}")
     print(f"{'='*60}")
@@ -769,7 +787,7 @@ def process_image(image_path, idx):
 
 
 def create_composite(image, mask, morphed, edges, lines_img, contours_img):
-    """Create a composite image showing all pipeline stages."""
+    """将流水线各阶段的输出拼成一张 2×3 的合成图，供可视化检查。"""
     h, w = image.shape[:2]
 
     # Resize for display if too large
@@ -819,7 +837,7 @@ def create_composite(image, mask, morphed, edges, lines_img, contours_img):
 
 
 def main():
-    """Main entry point."""
+    """主入口：扫描照片目录，逐张处理并输出结果。"""
     print("=" * 60)
     print("Cube Detection Pipeline")
     print(f"LAB Threshold: L({LAB_LOWER[0]}-{LAB_UPPER[0]}), "
@@ -854,7 +872,7 @@ def main():
 
 
 def _self_check_global_flow():
-    """Quick sanity check: _raw_lines → extend_lines → _extended_lines."""
+    """快速自测：验证 _raw_lines 经 extend_lines 后正确产出 _extended_lines。"""
     _reset_drawing_globals()
     # Two raw lines
     _raw_lines.append(((10, 10), (50, 10)))
@@ -866,7 +884,7 @@ def _self_check_global_flow():
 
 
 def _self_check_clip_ray():
-    """Quick sanity check for clip_ray_to_box."""
+    """快速自测：验证 clip_ray_to_box 在正方形包围盒上的交点计算正确。"""
     # Square box: (10,10), (100,10), (100,100), (10,100)
     box = np.array([[10, 10], [100, 10], [100, 100], [10, 100]], dtype=np.intp)
 
@@ -887,11 +905,11 @@ def _self_check_clip_ray():
 
 
 def _self_check_intersections():
-    """Quick sanity check: _merged_lines → find_all_intersections → _intersection_points."""
+    """快速自测：验证两条垂直线段的交点计算结果接近 (50, 50)。"""
     _reset_drawing_globals()
     # Two perpendicular lines crossing at (50, 50)
-    _merged_lines.append(((10, 50), (90, 50)))  # horizontal
-    _merged_lines.append(((50, 10), (50, 90)))  # vertical
+    _merged_lines.append(((10, 50), (90, 50)))  # 水平线
+    _merged_lines.append(((50, 10), (50, 90)))  # 垂直线
     find_all_intersections()
     assert len(_intersection_points) >= 1, f"Expected >= 1, got {len(_intersection_points)}"
     pt = _intersection_points[0]
