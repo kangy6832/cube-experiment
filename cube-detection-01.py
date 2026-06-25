@@ -122,15 +122,17 @@ def line_intersection(p1, p2, p3, p4):
     return (int(round(x)), int(round(y)))
 
 
-def merge_intersection_points(points, merge_radius=10):
+def merge_points():
     """
-    Merge intersection points that are within merge_radius of each other.
-    Returns list of merged points (centroids of each cluster).
+    Merge intersection points that are within 10px of each other.
+    Reads: _intersection_points
+    Writes: _merged_points
     """
-    if not points:
-        return []
+    global _merged_points
+    if not _intersection_points:
+        return
 
-    points = list(points)
+    points = list(_intersection_points)
     merged = []
     used = [False] * len(points)
 
@@ -149,8 +151,8 @@ def merge_intersection_points(points, merge_radius=10):
                     continue
                 # Check if point j is close to any point in current cluster
                 for cp in cluster:
-                    if abs(points[j][0] - cp[0]) <= merge_radius and \
-                       abs(points[j][1] - cp[1]) <= merge_radius:
+                    if abs(points[j][0] - cp[0]) <= 10 and \
+                       abs(points[j][1] - cp[1]) <= 10:
                         cluster.append(points[j])
                         used[j] = True
                         changed = True
@@ -160,7 +162,7 @@ def merge_intersection_points(points, merge_radius=10):
         avg_y = int(round(sum(p[1] for p in cluster) / len(cluster)))
         merged.append((avg_x, avg_y))
 
-    return merged
+    _merged_points = merged
 
 
 def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
@@ -237,18 +239,23 @@ def point_to_line_distance(px, py, x1, y1, x2, y2):
     return abs(dy * px - dx * py + x2 * y1 - y2 * x1) / length
 
 
-def extend_line_nx(p1, p2, factor):
+def extend_lines():
     """
-    Extend a line segment to `factor`x its original length, centered at midpoint.
-    Returns the two new endpoints.
+    Extend all raw Hough lines by LINE_EXTEND_FACTOR, centered at midpoint.
+    Reads: _raw_lines
+    Writes: _extended_lines
     """
-    x1, y1 = p1
-    x2, y2 = p2
-    ext1 = (int(round(factor * x1 - (factor - 1) * x2)),
-            int(round(factor * y1 - (factor - 1) * y2)))
-    ext2 = (int(round(factor * x2 - (factor - 1) * x1)),
-            int(round(factor * y2 - (factor - 1) * y1)))
-    return ext1, ext2
+    global _extended_lines
+    if not _raw_lines:
+        return
+    for p1, p2 in _raw_lines:
+        x1, y1 = p1
+        x2, y2 = p2
+        ext1 = (int(round(LINE_EXTEND_FACTOR * x1 - (LINE_EXTEND_FACTOR - 1) * x2)),
+                int(round(LINE_EXTEND_FACTOR * y1 - (LINE_EXTEND_FACTOR - 1) * y2)))
+        ext2 = (int(round(LINE_EXTEND_FACTOR * x2 - (LINE_EXTEND_FACTOR - 1) * x1)),
+                int(round(LINE_EXTEND_FACTOR * y2 - (LINE_EXTEND_FACTOR - 1) * y1)))
+        _extended_lines.append((ext1, ext2))
 
 
 def clip_ray_to_box(origin, direction, box):
@@ -300,25 +307,19 @@ def clip_ray_to_box(origin, direction, box):
             int(round(oy + dy * EXTEND_LENGTH)))
 
 
-def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
+def merge_lines():
     """
     Merge near-parallel extended lines into single lines.
-    Uses polar coordinate clustering: group by angle, then by distance.
-
-    Args:
-        extended_lines: list of ((x1,y1), (x2,y2)) tuples
-        angle_thresh: max angle difference in degrees to be considered parallel
-        dist_thresh: max perpendicular distance in pixels to be considered close
-
-    Returns:
-        List of merged ((x1,y1), (x2,y2)) tuples
+    Reads: _extended_lines
+    Writes: _merged_lines
     """
-    if len(extended_lines) <= 1:
-        return list(extended_lines)
+    global _merged_lines
+    if not _extended_lines:
+        return
 
-    # --- Step 1: Convert to polar representation (theta, rho) ---
+    # --- Convert to polar representation (theta, rho) ---
     lines_polar = []
-    for idx, (p1, p2) in enumerate(extended_lines):
+    for idx, (p1, p2) in enumerate(_extended_lines):
         x1, y1 = p1
         x2, y2 = p2
         dx = x2 - x1
@@ -326,34 +327,29 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
         length = np.sqrt(dx * dx + dy * dy)
         if length < 1e-10:
             continue
-        # Direction angle in [0, pi) — lines are undirected
         theta = np.arctan2(dy, dx) % np.pi
-        # Perpendicular distance from origin
         rho = abs(x1 * y2 - x2 * y1) / length
         lines_polar.append((theta, rho, idx, p1, p2))
 
     if not lines_polar:
-        return []
+        return
 
-    # --- Step 2: Sort by angle and cluster ---
-    angle_thresh_rad = np.radians(angle_thresh)
+    # --- Sort by angle and cluster ---
+    angle_thresh_rad = np.radians(ANGLE_THRESHOLD)
     lines_polar.sort(key=lambda x: x[0])
 
     # Handle angle wrap-around: duplicate first entries shifted by +pi
-    # so that angles near 0 and near pi can be clustered together
     extended = [(theta + np.pi, rho, idx, p1, p2)
                 for theta, rho, idx, p1, p2 in lines_polar]
     all_angles = lines_polar + extended
 
-    # Cluster by angle, but ensure each original index appears in at most
-    # one angle cluster (assign it to the first cluster it qualifies for).
+    # Cluster by angle, ensuring each original index appears in at most one cluster
     angle_clusters = []
     current_cluster = [all_angles[0]]
     used_indices = {all_angles[0][2]}
     for i in range(1, len(all_angles)):
         idx = all_angles[i][2]
         if idx in used_indices:
-            # This original line is already assigned to a previous cluster
             continue
         if all_angles[i][0] - current_cluster[-1][0] < angle_thresh_rad:
             current_cluster.append(all_angles[i])
@@ -364,8 +360,7 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
             used_indices.add(idx)
     angle_clusters.append(current_cluster)
 
-    # --- Step 3: Within each angle cluster, sub-cluster by rho ---
-    merged_lines = []
+    # --- Within each angle cluster, sub-cluster by rho ---
     for cluster in angle_clusters:
         # Deduplicate by original index (from the wrap-around duplication)
         seen = set()
@@ -384,14 +379,14 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
         rho_clusters = []
         current_rho_cluster = [unique_lines[0]]
         for i in range(1, len(unique_lines)):
-            if unique_lines[i][1] - current_rho_cluster[-1][1] < dist_thresh:
+            if unique_lines[i][1] - current_rho_cluster[-1][1] < DIST_THRESHOLD:
                 current_rho_cluster.append(unique_lines[i])
             else:
                 rho_clusters.append(current_rho_cluster)
                 current_rho_cluster = [unique_lines[i]]
         rho_clusters.append(current_rho_cluster)
 
-        # --- Step 4: Merge each rho cluster into one line ---
+        # --- Merge each rho cluster into one line ---
         for rho_cluster in rho_clusters:
             # Collect all endpoints
             all_points = []
@@ -408,9 +403,7 @@ def merge_adjacent_lines(extended_lines, angle_thresh, dist_thresh):
             min_idx = int(np.argmin(projections))
             max_idx = int(np.argmax(projections))
 
-            merged_lines.append((all_points[min_idx], all_points[max_idx]))
-
-    return merged_lines
+            _merged_lines.append((all_points[min_idx], all_points[max_idx]))
 
 
 def pipeline_detection(image, morphed_mask, box=None):
@@ -449,35 +442,27 @@ def pipeline_detection(image, morphed_mask, box=None):
             x1, y1, x2, y2 = line[0]
             _raw_lines.append(((x1, y1), (x2, y2)))
 
-    extended_lines = []
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            ext = extend_line_nx((x1, y1), (x2, y2), LINE_EXTEND_FACTOR)
-            extended_lines.append(ext)
+    # Extend raw lines (global I/O)
+    extend_lines()
 
-    # Merge adjacent/near-parallel lines
-    merged_lines = merge_adjacent_lines(extended_lines, ANGLE_THRESHOLD, DIST_THRESHOLD)
-    print(f"    Lines after merging: {len(merged_lines)} (from {line_count})")
-
-    # Collect merged lines into global
-    for ext_line in merged_lines:
-        pt1, pt2 = ext_line
-        _merged_lines.append((pt1, pt2))
+    # Merge extended lines (global I/O)
+    merge_lines()
+    print(f"    Lines after merging: {len(_merged_lines)} (from {line_count})")
 
     # Collect all intersection points from merged lines
     raw_points = []
-    for i in range(len(merged_lines)):
-        for j in range(i + 1, len(merged_lines)):
+    for i in range(len(_merged_lines)):
+        for j in range(i + 1, len(_merged_lines)):
             pt = segment_intersection(
-                merged_lines[i][0], merged_lines[i][1],
-                merged_lines[j][0], merged_lines[j][1]
+                _merged_lines[i][0], _merged_lines[i][1],
+                _merged_lines[j][0], _merged_lines[j][1]
             )
             if pt is not None:
                 raw_points.append(pt)
 
-    # Merge nearby points (within merge_radius pixels)
-    merged_points = merge_intersection_points(raw_points, merge_radius=10)
+    # Store raw intersection points, then merge (global I/O)
+    _intersection_points.extend(raw_points)
+    merge_points()
 
     # Track intermediate collinear points to exclude from drawing
     excluded_points = set()
@@ -486,10 +471,10 @@ def pipeline_detection(image, morphed_mask, box=None):
     # For each merged line, find merged intersection points on it
     # and collect the segment between the first two such points in red.
     red_segments = []  # track red segments for extension line logic
-    for ext_line in merged_lines:
+    for ext_line in _merged_lines:
         pt1, pt2 = ext_line
         points_on_line = []
-        for mp in merged_points:
+        for mp in _merged_points:
             if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
                 points_on_line.append(mp)
         if len(points_on_line) >= 2:
@@ -524,7 +509,7 @@ def pipeline_detection(image, morphed_mask, box=None):
                 red_endpoints.add(p_b)
 
     # Collect merged intersection points into global
-    for x, y in merged_points:
+    for x, y in _merged_points:
         if (x, y) in excluded_points:
             continue
         if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
@@ -535,7 +520,7 @@ def pipeline_detection(image, morphed_mask, box=None):
     if box is not None and len(red_segments) > 0:
         centroid = np.mean(box, axis=0)  # (cx, cy) of yellow box
 
-        for mp in merged_points:
+        for mp in _merged_points:
             # Skip points outside box (shouldn't happen, but guard)
             if cv2.pointPolygonTest(box, mp, False) < 0:
                 continue
@@ -556,7 +541,7 @@ def pipeline_detection(image, morphed_mask, box=None):
 
             # Find blue lines passing through this point
             blue_on = []
-            for ml in merged_lines:
+            for ml in _merged_lines:
                 if point_on_segment(mp[0], mp[1], ml[0][0], ml[0][1],
                                      ml[1][0], ml[1][1], tol=3):
                     blue_on.append(ml)
@@ -598,7 +583,7 @@ def pipeline_detection(image, morphed_mask, box=None):
 
                 _extension_lines.append((mp, endpoint))
 
-    return edges, line_count, len(merged_lines), len(merged_points)
+    return edges, line_count, len(_merged_lines), len(_merged_points)
 
 
 def draw_all_elements(image, box=None):
@@ -857,6 +842,18 @@ def main():
     print(f"Processing complete. {len(image_paths)} images processed.")
     print(f"Results saved to: {OUTPUT_DIR}")
     print(f"{'='*60}")
+
+
+def _self_check_global_flow():
+    """Quick sanity check: _raw_lines → extend_lines → _extended_lines."""
+    _reset_drawing_globals()
+    # Two raw lines
+    _raw_lines.append(((10, 10), (50, 10)))
+    _raw_lines.append(((10, 20), (50, 20)))
+    _image_size = (100, 100)
+    extend_lines()
+    assert len(_extended_lines) == 2, f"Expected 2, got {len(_extended_lines)}"
+    print("  [self_check] global_flow (extend_lines): PASS")
 
 
 def _self_check_clip_ray():
