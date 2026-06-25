@@ -248,6 +248,29 @@ def assign_red_segments():
     globals()['_red_endpoints'] = red_endpoints
 
 
+def filter_intersection_points():
+    """
+    Filter merged intersection points: remove excluded collinear points
+    and points outside the bounding box.
+    Reads: _merged_points, _excluded_points, _box
+    Writes: _intersection_points (rebuilt from _merged_points with filtering)
+    """
+    global _intersection_points
+    if not _merged_points:
+        _intersection_points = []
+        return
+
+    excluded = globals().get('_excluded_points', set())
+    filtered = []
+    for mp in _merged_points:
+        if mp in excluded:
+            continue
+        if _box is not None and cv2.pointPolygonTest(_box, mp, False) < 0:
+            continue
+        filtered.append(mp)
+    _intersection_points = filtered
+
+
 def extend_independent_points():
     """
     For independent intersection points (not on any red segment),
@@ -591,6 +614,9 @@ def pipeline_detection(image, morphed_mask, box=None):
     # Collect all intersection points from merged lines (global I/O)
     find_all_intersections()
     merge_points()
+
+    # Stage 5b: Filter intersection points (remove excluded + out-of-box)
+    filter_intersection_points()
 
     # Stage 6: Assign red segments
     assign_red_segments()
