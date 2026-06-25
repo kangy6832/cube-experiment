@@ -615,11 +615,11 @@ def pipeline_detection(image, morphed_mask, box=None):
     find_all_intersections()
     merge_points()
 
-    # Stage 5b: Filter intersection points (remove excluded + out-of-box)
-    filter_intersection_points()
-
-    # Stage 6: Assign red segments
+    # Stage 6: Assign red segments (also computes _excluded_points)
     assign_red_segments()
+
+    # Stage 6b: Filter intersection points (remove excluded + out-of-box)
+    filter_intersection_points()
 
     # Stage 7: Extend independent points
     extend_independent_points()
