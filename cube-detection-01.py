@@ -197,6 +197,127 @@ def merge_points():
     _merged_points = merged
 
 
+def assign_red_segments():
+    """
+    For each merged line, find merged intersection points on it
+    and store the segment between the two farthest-apart points.
+    Reads: _merged_lines, _merged_points, _box
+    Writes: _red_segments
+    """
+    global _red_segments
+    if not _merged_lines or not _merged_points:
+        return
+
+    excluded_points = set()
+    red_endpoints = set()
+
+    for ext_line in _merged_lines:
+        pt1, pt2 = ext_line
+        points_on_line = []
+        for mp in _merged_points:
+            if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
+                points_on_line.append(mp)
+        if len(points_on_line) >= 2:
+            if len(points_on_line) == 2:
+                p_a, p_b = points_on_line[0], points_on_line[1]
+            else:
+                max_dist = -1
+                p_a, p_b = points_on_line[0], points_on_line[1]
+                for pi in range(len(points_on_line)):
+                    for pj in range(pi + 1, len(points_on_line)):
+                        dx = points_on_line[pi][0] - points_on_line[pj][0]
+                        dy = points_on_line[pi][1] - points_on_line[pj][1]
+                        d = dx * dx + dy * dy
+                        if d > max_dist:
+                            max_dist = d
+                            p_a, p_b = points_on_line[pi], points_on_line[pj]
+            if len(points_on_line) >= 3:
+                for p in points_on_line:
+                    if p != p_a and p != p_b:
+                        excluded_points.add(p)
+            if _box is None or (
+                cv2.pointPolygonTest(_box, p_a, False) >= 0 and
+                cv2.pointPolygonTest(_box, p_b, False) >= 0
+            ):
+                _red_segments.append((p_a, p_b))
+                red_endpoints.add(p_a)
+                red_endpoints.add(p_b)
+
+    # Store excluded points and endpoints for extend_independent_points
+    globals()['_excluded_points'] = excluded_points
+    globals()['_red_endpoints'] = red_endpoints
+
+
+def extend_independent_points():
+    """
+    For independent intersection points (not on any red segment),
+    extend along all blue lines through them toward the box center.
+    Reads: _merged_points, _merged_lines, _box
+    Writes: _extension_lines
+    """
+    global _extension_lines
+    if _box is None or not _merged_points:
+        return
+
+    # Ensure excluded_points and red_endpoints exist (set by assign_red_segments)
+    excluded_points = globals().get('_excluded_points', set())
+    red_endpoints = globals().get('_red_endpoints', set())
+
+    centroid = np.mean(_box, axis=0)
+
+    for mp in _merged_points:
+        if mp in excluded_points:
+            continue
+        if cv2.pointPolygonTest(_box, mp, False) < 0:
+            continue
+
+        is_endpoint = mp in red_endpoints
+        red_on = []
+        for seg in _red_segments:
+            p_a, p_b = seg
+            if point_on_segment(mp[0], mp[1], p_a[0], p_a[1],
+                                 p_b[0], p_b[1], tol=3):
+                red_on.append(seg)
+        is_independent = len(red_on) == 0
+
+        if not is_endpoint and not is_independent:
+            continue
+        if is_endpoint:
+            continue
+
+        blue_on = []
+        for ml in _merged_lines:
+            if point_on_segment(mp[0], mp[1], ml[0][0], ml[0][1],
+                                 ml[1][0], ml[1][1], tol=3):
+                blue_on.append(ml)
+
+        for bl in blue_on:
+            bx = bl[1][0] - bl[0][0]
+            by = bl[1][1] - bl[0][1]
+            blen = np.sqrt(bx * bx + by * by)
+            if blen < 1e-10:
+                continue
+            dir_x = bx / blen
+            dir_y = by / blen
+
+            to_cx = centroid[0] - mp[0]
+            to_cy = centroid[1] - mp[1]
+            if dir_x * to_cx + dir_y * to_cy < 0:
+                dir_x = -dir_x
+                dir_y = -dir_y
+
+            endpoint = clip_ray_to_box(mp, (dir_x, dir_y), _box)
+
+            ex = endpoint[0] - mp[0]
+            ey = endpoint[1] - mp[1]
+            actual_len = np.sqrt(ex * ex + ey * ey)
+            if actual_len > EXTEND_LENGTH:
+                endpoint = (int(round(mp[0] + dir_x * EXTEND_LENGTH)),
+                            int(round(mp[1] + dir_y * EXTEND_LENGTH)))
+
+            _extension_lines.append((mp, endpoint))
+
+
 def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
     """
     Check if point (px, py) lies on line segment from (x1,y1) to (x2,y2).
@@ -471,124 +592,11 @@ def pipeline_detection(image, morphed_mask, box=None):
     find_all_intersections()
     merge_points()
 
-    # Track intermediate collinear points to exclude from drawing
-    excluded_points = set()
-    red_endpoints = set()  # track farthest-pair endpoints for extension logic
+    # Stage 6: Assign red segments
+    assign_red_segments()
 
-    # For each merged line, find merged intersection points on it
-    # and collect the segment between the first two such points in red.
-    red_segments = []  # track red segments for extension line logic
-    for ext_line in _merged_lines:
-        pt1, pt2 = ext_line
-        points_on_line = []
-        for mp in _merged_points:
-            if point_on_segment(mp[0], mp[1], pt1[0], pt1[1], pt2[0], pt2[1], tol=3):
-                points_on_line.append(mp)
-        if len(points_on_line) >= 2:
-            # Find the segment between the two farthest-apart intersection points
-            if len(points_on_line) == 2:
-                p_a, p_b = points_on_line[0], points_on_line[1]
-            else:
-                # Find the pair with maximum Euclidean distance
-                max_dist = -1
-                p_a, p_b = points_on_line[0], points_on_line[1]
-                for pi in range(len(points_on_line)):
-                    for pj in range(pi + 1, len(points_on_line)):
-                        dx = points_on_line[pi][0] - points_on_line[pj][0]
-                        dy = points_on_line[pi][1] - points_on_line[pj][1]
-                        d = dx * dx + dy * dy
-                        if d > max_dist:
-                            max_dist = d
-                            p_a, p_b = points_on_line[pi], points_on_line[pj]
-            # If 3+ points on this line, collect intermediate points for exclusion
-            if len(points_on_line) >= 3:
-                for p in points_on_line:
-                    if p != p_a and p != p_b:
-                        excluded_points.add(p)
-            # Only store if both endpoints inside box (or no box)
-            if box is None or (
-                cv2.pointPolygonTest(box, p_a, False) >= 0 and
-                cv2.pointPolygonTest(box, p_b, False) >= 0
-            ):
-                _red_segments.append((p_a, p_b))
-                red_segments.append((p_a, p_b, ext_line))
-                red_endpoints.add(p_a)
-                red_endpoints.add(p_b)
-
-    # Collect merged intersection points into global
-    for x, y in _merged_points:
-        if (x, y) in excluded_points:
-            continue
-        if box is not None and cv2.pointPolygonTest(box, (x, y), False) < 0:
-            continue
-        _intersection_points.append((x, y))
-
-    # --- Extension red lines along blue lines ---
-    if box is not None and len(red_segments) > 0:
-        centroid = np.mean(box, axis=0)  # (cx, cy) of yellow box
-
-        for mp in _merged_points:
-            # Skip points outside box (shouldn't happen, but guard)
-            if cv2.pointPolygonTest(box, mp, False) < 0:
-                continue
-
-            # Classify point: endpoint, independent, or middle
-            is_endpoint = mp in red_endpoints
-            red_on = []
-            for seg in red_segments:
-                p_a, p_b, _ = seg
-                if point_on_segment(mp[0], mp[1], p_a[0], p_a[1],
-                                     p_b[0], p_b[1], tol=3):
-                    red_on.append(seg)
-            is_independent = len(red_on) == 0
-
-            # Skip middle points (on a red segment but not an endpoint)
-            if not is_endpoint and not is_independent:
-                continue
-
-            # Find blue lines passing through this point
-            blue_on = []
-            for ml in _merged_lines:
-                if point_on_segment(mp[0], mp[1], ml[0][0], ml[0][1],
-                                     ml[1][0], ml[1][1], tol=3):
-                    blue_on.append(ml)
-
-            if is_endpoint:
-                # Skip endpoint extensions — only extend independent points
-                continue
-            else:
-                # Independent point: extend along ALL blue lines through it
-                blue_lines_to_extend = blue_on
-
-            # Extend along selected blue line(s)
-            for bl in blue_lines_to_extend:
-                bx = bl[1][0] - bl[0][0]
-                by = bl[1][1] - bl[0][1]
-                blen = np.sqrt(bx * bx + by * by)
-                if blen < 1e-10:
-                    continue
-                dir_x = bx / blen
-                dir_y = by / blen
-
-                # Pick direction with positive dot product toward centroid
-                to_cx = centroid[0] - mp[0]
-                to_cy = centroid[1] - mp[1]
-                if dir_x * to_cx + dir_y * to_cy < 0:
-                    dir_x = -dir_x
-                    dir_y = -dir_y
-
-                # Clip ray to box boundary
-                endpoint = clip_ray_to_box(mp, (dir_x, dir_y), box)
-
-                # Apply length cap
-                ex = endpoint[0] - mp[0]
-                ey = endpoint[1] - mp[1]
-                actual_len = np.sqrt(ex * ex + ey * ey)
-                if actual_len > EXTEND_LENGTH:
-                    endpoint = (int(round(mp[0] + dir_x * EXTEND_LENGTH)),
-                                int(round(mp[1] + dir_y * EXTEND_LENGTH)))
-
-                _extension_lines.append((mp, endpoint))
+    # Stage 7: Extend independent points
+    extend_independent_points()
 
     return edges, line_count, len(_merged_lines), len(_merged_points)
 
