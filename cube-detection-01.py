@@ -358,38 +358,6 @@ def point_on_segment(px, py, x1, y1, x2, y2, tol=2):
 
 
 
-def extend_line(p1, p2, img_w, img_h):
-    """
-    Extend a line segment to 2x its original length (centered on original).
-    Returns two extended points, or None if out of bounds.
-    """
-    x1, y1 = p1
-    x2, y2 = p2
-
-    if x1 == x2 and y1 == y2:
-        return None
-
-    # Direction vector
-    dx = x2 - x1
-    dy = y2 - y1
-
-    # Original segment: t in [0, 1], extend to t in [-0.5, 1.5] for 2x length
-    t_min = -0.5
-    t_max = 1.5
-
-    ext1 = (int(round(x1 + t_min * dx)), int(round(y1 + t_min * dy)))
-    ext2 = (int(round(x1 + t_max * dx)), int(round(y1 + t_max * dy)))
-
-    # Check that at least part of the extended line is within the image
-    margin = 100
-    if (min(ext1[0], ext2[0]) > img_w + margin or
-        max(ext1[0], ext2[0]) < -margin or
-        min(ext1[1], ext2[1]) > img_h + margin or
-        max(ext1[1], ext2[1]) < -margin):
-        return None
-
-    return (ext1, ext2)
-
 
 def point_to_line_distance(px, py, x1, y1, x2, y2):
     """Distance from point (px,py) to line through (x1,y1)-(x2,y2)."""
